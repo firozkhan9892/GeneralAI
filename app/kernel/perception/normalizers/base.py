@@ -1,0 +1,1 @@
+"""Standard input normalizer implementations."""
