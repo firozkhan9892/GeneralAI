@@ -499,6 +499,7 @@ class PluginManager:
                 ) from exc
 
             self._record_registrations(name, plugin, registrations, context)
+            self._register_llm_provider(plugin, context)
             self._registry.set_state(name, PluginLifecycleState.ENABLED)
             state = self._registry.get_state(name)
             self._registry._states[name] = state.model_copy(
@@ -555,6 +556,7 @@ class PluginManager:
                     context={"plugin": name},
                 ) from exc
 
+            self._unregister_llm_provider(plugin, context)
             self._registry.set_state(name, PluginLifecycleState.DISABLED)
             state = self._registry.get_state(name)
             self._registry._states[name] = state.model_copy(
@@ -717,6 +719,125 @@ class PluginManager:
                 registry_target=reg_id,
             )
             self._registry.add_registration(name, reg)
+
+    # ------------------------------------------------------------------
+    # Automatic LLM provider wiring
+    # ------------------------------------------------------------------
+
+    def _extract_llm_provider(self, plugin: PluginBase) -> Any | None:
+        """Return a :class:`BaseLLMProvider` from a plugin, if available.
+
+        Supports two shapes:
+        - the plugin instance itself implements ``BaseLLMProvider``;
+        - the plugin exposes a ``provider`` attribute that does.
+        """
+        from app.llm.base import BaseLLMProvider
+
+        if isinstance(plugin, BaseLLMProvider):
+            return plugin
+        provider = getattr(plugin, "provider", None)
+        if isinstance(provider, BaseLLMProvider):
+            return provider
+        return None
+
+    def _register_llm_provider(
+        self, plugin: PluginBase, context: PluginContext
+    ) -> None:
+        """Auto-register an LLM_PROVIDER plugin with system registries.
+
+        Wires the provider into the ``ProviderRegistry`` (via the
+        context), the ``CapabilityMatrix``, and the ``ProviderHealthMonitor``
+        so the router can immediately route to it.
+        """
+        if plugin.plugin_type != PluginType.LLM_PROVIDER:
+            return
+
+        provider = self._extract_llm_provider(plugin)
+        if provider is None:
+            log.debug(
+                "Plugin '%s' is LLM_PROVIDER but exposes no provider instance",
+                plugin.manifest.name,
+            )
+            return
+
+        registry = context.provider_registry
+        if registry is not None:
+            try:
+                registry.register(provider, overwrite=True)
+            except Exception as exc:
+                log.warning(
+                    "Failed to register provider '%s' via plugin: %s",
+                    provider.name,
+                    exc,
+                )
+
+        try:
+            from app.llm.capability_matrix import CapabilityMatrix
+            from app.llm.health_monitor import ProviderHealthMonitor
+
+            if context.container is not None and context.container.has(
+                CapabilityMatrix
+            ):
+                matrix = context.container.resolve(CapabilityMatrix)
+                matrix.register(provider.name, CapabilityMatrix.from_provider(provider))
+            if context.container is not None and context.container.has(
+                ProviderHealthMonitor
+            ):
+                monitor = context.container.resolve(ProviderHealthMonitor)
+                monitor.record_success(provider.name, 0.0, 0)
+        except Exception as exc:
+            log.warning("Failed to wire LLM provider '%s': %s", provider.name, exc)
+
+        log.info(
+            "Auto-registered LLM provider '%s' from plugin '%s'",
+            provider.name,
+            plugin.manifest.name,
+        )
+
+    def _unregister_llm_provider(
+        self, plugin: PluginBase, context: PluginContext
+    ) -> None:
+        """Auto-unregister an LLM_PROVIDER plugin from system registries."""
+        if plugin.plugin_type != PluginType.LLM_PROVIDER:
+            return
+
+        provider = self._extract_llm_provider(plugin)
+        if provider is None:
+            return
+
+        registry = context.provider_registry
+        if registry is not None:
+            try:
+                registry.unregister(provider.name)
+            except Exception as exc:
+                log.warning(
+                    "Failed to unregister provider '%s': %s",
+                    provider.name,
+                    exc,
+                )
+
+        try:
+            from app.llm.capability_matrix import CapabilityMatrix
+            from app.llm.health_monitor import ProviderHealthMonitor
+
+            if context.container is not None and context.container.has(
+                CapabilityMatrix
+            ):
+                context.container.resolve(CapabilityMatrix).unregister(provider.name)
+            if context.container is not None and context.container.has(
+                ProviderHealthMonitor
+            ):
+                context.container.resolve(ProviderHealthMonitor).reset_provider(
+                    provider.name
+                )
+        except Exception as exc:
+            log.warning("Failed to un-wire LLM provider '%s': %s", provider.name, exc)
+
+        log.info(
+            "Auto-unregistered LLM provider '%s' from plugin '%s'",
+            provider.name,
+            plugin.manifest.name,
+        )
 
     # ------------------------------------------------------------------
     # Convenience

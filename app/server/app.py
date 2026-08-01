@@ -18,6 +18,7 @@ from app.agents.bootstrap import register_agent_manager_components
 from app.agents.manager import AgentManager
 from app.core.container import DependencyContainer
 from app.core.exceptions import GeneralAIError
+from app.llm.bootstrap import register_llm_components
 from app.server.config import ServerSettings
 from app.server.metrics import MetricsCollector
 from app.server.routers.chat import router as chat_router
@@ -105,6 +106,7 @@ def create_app(
     container = container or DependencyContainer()
 
     register_agent_manager_components(container)
+    register_llm_components(container)
 
     metrics = MetricsCollector()
     from app.server.security import RateLimiter
@@ -136,6 +138,9 @@ def create_app(
     # Resolve shared singletons eagerly so dependencies can read them
     # from app.state without depending on the container at request time.
     app.state.agent_manager = container.resolve(AgentManager)
+    app.state.llm_router = container.resolve(
+        __import__("app.llm.llm_router", fromlist=["LLMRouter"]).LLMRouter
+    )
     app.state.memory_engine = container.resolve(
         __import__("app.kernel.memory.engine", fromlist=["MemoryEngine"]).MemoryEngine
     )

@@ -7,6 +7,7 @@ import logging
 from app.core.container import DependencyContainer
 from app.llm.factory import ProviderFactory
 from app.llm.registry import ProviderRegistry
+from app.llm.router_bootstrap import register_router_components
 
 log = logging.getLogger(__name__)
 
@@ -18,9 +19,13 @@ def register_llm_components(container: DependencyContainer) -> None:
     factory builds provider instances on demand, keeping credential
     configuration out of the container itself.
 
+    Also registers the Multi-LLM Intelligence Layer (router, health
+    monitor, etc.) via :func:`register_router_components`.
+
     Args:
         container: The application's :class:`DependencyContainer`.
     """
     container.register_singleton(ProviderRegistry)
     container.register_singleton(ProviderFactory)
+    register_router_components(container)
     log.info("Registered %d LLM provider components", 2)
