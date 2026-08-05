@@ -7,7 +7,7 @@ import time
 import asyncio
 from datetime import datetime, timezone
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -1011,7 +1011,7 @@ class TestObservabilityIntegration:
 
     def test_publisher_with_event_bus(self) -> None:
         mock_bus = MagicMock()
-        mock_bus.emit = AsyncMock()
+        mock_bus.emit = MagicMock()
         pub = EventPublisher(event_bus=mock_bus)
         pub.publish(PipelineEvent.PERCEPTION_STARTED, {"stage": "perception"})
         assert mock_bus.emit.called

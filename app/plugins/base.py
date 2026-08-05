@@ -32,6 +32,9 @@ class PluginContext:
         memory_engine: :class:`app.kernel.memory.engine.MemoryEngine` instance.
         fastapi_app: :class:`fastapi.FastAPI` instance (for API_ROUTE plugins).
         container: :class:`app.core.container.DependencyContainer` instance.
+        workflow_service: :class:`app.automation.workflow.WorkflowService` instance.
+        workflow_registry: :class:`app.automation.registries.WorkflowRegistry` instance.
+        step_type_registry: :class:`app.automation.registries.StepTypeRegistry` instance.
         logger: Logger scoped to the plugin.
     """
 
@@ -42,6 +45,9 @@ class PluginContext:
     memory_engine: Any | None = None
     fastapi_app: Any | None = None
     container: Any | None = None
+    workflow_service: Any | None = None
+    workflow_registry: Any | None = None
+    step_type_registry: Any | None = None
     logger: logging.Logger = field(default_factory=lambda: log)
 
     def log_info(self, msg: str, *args: Any) -> None:

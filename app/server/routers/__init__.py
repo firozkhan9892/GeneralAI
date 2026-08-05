@@ -7,6 +7,10 @@ from app.server.routers.agent import router as agent_router
 from app.server.routers.health import router as health_router
 from app.server.routers.memory import router as memory_router
 from app.server.routers.tools import router as tools_router
+from app.server.routers.workflows import (
+    router as workflows_router,
+    schedule_router as workflows_schedule_router,
+)
 
 __all__ = [
     "chat_router",
@@ -14,4 +18,6 @@ __all__ = [
     "health_router",
     "memory_router",
     "tools_router",
+    "workflows_router",
+    "workflows_schedule_router",
 ]

@@ -16,6 +16,16 @@ from starlette.middleware.cors import CORSMiddleware
 
 from app.agents.bootstrap import register_agent_manager_components
 from app.agents.manager import AgentManager
+from app.automation.bootstrap import register_automation_components
+from app.automation.exceptions import (
+    WorkflowApprovalError,
+    WorkflowConcurrencyError,
+    WorkflowNotFoundError,
+    WorkflowSchedulerError,
+    WorkflowValidationError,
+    WorkflowVersionError,
+)
+from app.automation.workflow import WorkflowService
 from app.core.container import DependencyContainer
 from app.core.exceptions import GeneralAIError
 from app.llm.bootstrap import register_llm_components
@@ -25,6 +35,10 @@ from app.server.routers.chat import router as chat_router
 from app.server.routers.health import router as health_router
 from app.server.routers.memory import router as memory_router
 from app.server.routers.tools import router as tools_router
+from app.server.routers.workflows import (
+    router as workflows_router,
+    schedule_router as workflows_schedule_router,
+)
 from app.tools.categories.planning import plan_tools
 from app.tools.registry import ToolRegistry
 
@@ -53,12 +67,73 @@ def _register_exception_handlers(app: FastAPI) -> None:
             content={"detail": exc.message},
         )
 
+    # Workflow automation errors map to REST semantics.  Registered
+    # after the base handler so Starlette resolves the most specific
+    # handler for each exception type.
+    @app.exception_handler(WorkflowNotFoundError)
+    async def _workflow_not_found(
+        request: Request, exc: WorkflowNotFoundError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={"detail": exc.message},
+        )
+
+    @app.exception_handler(WorkflowValidationError)
+    async def _workflow_validation(
+        request: Request, exc: WorkflowValidationError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "detail": exc.message,
+                "violations": exc.context.get("violations", []),
+            },
+        )
+
+    @app.exception_handler(WorkflowVersionError)
+    async def _workflow_version(
+        request: Request, exc: WorkflowVersionError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": exc.message},
+        )
+
+    @app.exception_handler(WorkflowApprovalError)
+    async def _workflow_approval(
+        request: Request, exc: WorkflowApprovalError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": exc.message},
+        )
+
+    @app.exception_handler(WorkflowSchedulerError)
+    async def _workflow_scheduler(
+        request: Request, exc: WorkflowSchedulerError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content={"detail": exc.message},
+        )
+
+    @app.exception_handler(WorkflowConcurrencyError)
+    async def _workflow_concurrency(
+        request: Request, exc: WorkflowConcurrencyError
+    ) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"detail": exc.message},
+        )
+
 
 def _build_lifespan(_app: FastAPI):
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         container: DependencyContainer = app.state.container
         register_agent_manager_components(container)
+        register_automation_components(container)
 
         manager: AgentManager = container.resolve(AgentManager)
         app.state.agent_manager = manager
@@ -69,11 +144,16 @@ def _build_lifespan(_app: FastAPI):
             for tool in plan_tools():
                 registry.register(tool)
 
+        workflow_service: WorkflowService = container.resolve(WorkflowService)
+        app.state.workflow_service = workflow_service
+
         await manager.restore()
+        await workflow_service.startup()
         log.info("Server lifespan started")
         try:
             yield
         finally:
+            await workflow_service.shutdown()
             await manager.shutdown()
             log.info("Server lifespan ended")
 
@@ -107,6 +187,7 @@ def create_app(
 
     register_agent_manager_components(container)
     register_llm_components(container)
+    register_automation_components(container)
 
     metrics = MetricsCollector()
     from app.server.security import RateLimiter
@@ -148,6 +229,7 @@ def create_app(
     app.state.tool_executor = container.resolve(
         __import__("app.tools.executor", fromlist=["ToolExecutor"]).ToolExecutor
     )
+    app.state.workflow_service = container.resolve(WorkflowService)
 
     # CORS (opt-in)
     if settings.cors_origins:
@@ -172,6 +254,8 @@ def create_app(
     app.include_router(chat_router, dependencies=protected_deps)
     app.include_router(memory_router, dependencies=protected_deps)
     app.include_router(tools_router, dependencies=protected_deps)
+    app.include_router(workflows_router, dependencies=protected_deps)
+    app.include_router(workflows_schedule_router, dependencies=protected_deps)
     # Register agent routes individually — WS route must NOT use HTTP
     # dependencies, so we don't include the whole agent_router with deps.
     from app.server.routers.agent import (

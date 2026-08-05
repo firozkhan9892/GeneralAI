@@ -615,6 +615,7 @@ class PluginManager:
                     context={"plugin": name},
                 ) from exc
 
+            self._unregister_plugin_workflows(name, context)
             self._registry.clear_registrations(name)
             self._registry.unregister_plugin(name)
             log.info("Unloaded plugin '%s'", name)
@@ -696,6 +697,7 @@ class PluginManager:
                 context={"plugin": name},
             ) from exc
 
+        self._unregister_plugin_workflows(name, context)
         self._registry.clear_registrations(name)
         self._registry.unregister_plugin(name)
 
@@ -719,6 +721,38 @@ class PluginManager:
                 registry_target=reg_id,
             )
             self._registry.add_registration(name, reg)
+
+    # ------------------------------------------------------------------
+    # Workflow cleanup
+    # ------------------------------------------------------------------
+
+    def _unregister_plugin_workflows(self, name: str, context: PluginContext) -> None:
+        """Remove workflows a plugin registered so unload is clean.
+
+        Called during UNLOAD/DISABLE teardown before the plugin's
+        registration tracking is cleared.  Published workflows are
+        immutable and are deliberately left in place (with a warning).
+        """
+        workflow_registry = context.workflow_registry
+        if workflow_registry is None:
+            return
+        for reg in self._registry.get_registrations(name):
+            if reg.plugin_type != PluginType.WORKFLOW:
+                continue
+            try:
+                workflow_registry.unregister(reg.registration_id)
+            except Exception as exc:  # noqa: BLE001
+                # Deliberately broad: teardown must never propagate a single
+                # plugin's failure into the whole manager's unload path.
+                # Another plugin's registration or a partially-failed store
+                # could raise anything here; we log and continue so every
+                # plugin is given a chance to clean up independently.
+                log.warning(
+                    "Could not unregister workflow '%s' for plugin '%s': %s",
+                    reg.registration_id,
+                    name,
+                    exc,
+                )
 
     # ------------------------------------------------------------------
     # Automatic LLM provider wiring

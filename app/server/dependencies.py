@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import Request
 
 from app.agents.manager import AgentManager
+from app.automation.workflow import WorkflowService
 from app.kernel.memory.engine import MemoryEngine
 from app.server.config import ServerSettings
 from app.tools.executor import ToolExecutor
@@ -44,3 +45,8 @@ def get_tool_executor(request: Request) -> ToolExecutor:
 def get_rate_limiter(request: Request):
     """Return the shared RateLimiter."""
     return request.app.state.rate_limiter
+
+
+def get_workflow_service(request: Request) -> WorkflowService:
+    """Return the shared WorkflowService."""
+    return request.app.state.workflow_service

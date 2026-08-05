@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
+from typing import Any
 
 from app.core.constants.events import EVENT_BUS_MAX_HANDLERS_PER_EVENT
 from app.core.exceptions.event import (
@@ -116,6 +117,24 @@ class EventBus(IEventBus):
         if handler in handlers:
             handlers.remove(handler)
             log.debug("Handler unsubscribed from '%s'", event_type)
+
+    def emit(self, event_type: str, data: dict[str, Any] | None = None) -> None:
+        """Synchronous convenience: schedule an event publish on the event loop.
+
+        Used by synchronous publishers (e.g. :class:`EventPublisher`) that
+        cannot ``await`` the async :meth:`publish` directly.  If no event
+        loop is running the event is silently dropped.
+        """
+        event = Event(
+            event_type=event_type,
+            source="event_bus.emit",
+        )
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.publish(event))
+        except RuntimeError:
+            # No running event loop — best-effort drop.
+            log.debug("No running loop; event '%s' dropped", event_type)
 
     def clear(self) -> None:
         """Remove all handlers."""

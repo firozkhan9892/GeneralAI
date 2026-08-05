@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from app.agents.models import AgentExecutionOptions, AgentSession
+from app.automation.models import (
+    ScheduleSpec,
+    ScheduleTriggerType,
+    WorkflowDefinition,
+    WorkflowRun,
+)
 from app.kernel.agent.models import AgentRunConfig
 from app.kernel.memory.models import MemorySearchHit
 
@@ -109,3 +116,101 @@ class MetricsResponse(BaseModel):
     sessions_total: int = Field(..., ge=0, description="Tracked sessions")
     memory_records: int = Field(..., ge=0, description="Stored memory records")
     tools_count: int = Field(..., ge=0, description="Registered tools")
+
+
+# ----------------------------------------------------------------------
+# Workflow automation (Phase 12e)
+# ----------------------------------------------------------------------
+
+
+class WorkflowRunRequest(BaseModel):
+    """Body of ``POST /workflows/{workflow_id}/run``."""
+
+    inputs: dict[str, Any] = Field(
+        default_factory=dict, description="Input values for the run"
+    )
+    version: str | None = Field(default=None, description="Specific version to run")
+    idempotency_key: str | None = Field(
+        default=None, description="Deduplication key for the run"
+    )
+
+
+class WorkflowPublishRequest(BaseModel):
+    """Body of ``POST /workflows/{workflow_id}/publish``."""
+
+    version: str = Field(..., min_length=1, description="Version to publish")
+
+
+class WorkflowVersionCreateRequest(BaseModel):
+    """Body of ``POST /workflows/{workflow_id}/versions``."""
+
+    version: str = Field(..., min_length=1, description="New version string")
+    definition: WorkflowDefinition = Field(..., description="Definition to register")
+
+
+class ApprovalDecisionRequest(BaseModel):
+    """Body of approval decision endpoints."""
+
+    decided_by: str = Field(default="", description="Who made the decision")
+    decision_note: str = Field(default="", description="Optional note")
+
+
+class ScheduleCreateRequest(BaseModel):
+    """Body of ``POST /schedules``."""
+
+    workflow_id: str = Field(..., min_length=1, description="Workflow to trigger")
+    workflow_version: str = Field(default="", description="Empty = latest published")
+    trigger_type: ScheduleTriggerType = Field(..., description="Trigger kind")
+    cron_expression: str = Field(default="", description="CRON expression")
+    interval_seconds: float = Field(default=0.0, ge=0.0, description="INTERVAL period")
+    run_at: datetime | None = Field(default=None, description="DATETIME one-shot time")
+    timezone: str = Field(default="UTC", description="Schedule timezone")
+    payload: dict[str, Any] = Field(default_factory=dict, description="Static inputs")
+    enabled: bool = Field(default=True, description="Start enabled")
+    max_concurrent_runs: int = Field(
+        default=1, ge=1, description="Per-schedule concurrency cap"
+    )
+
+
+class ScheduleUpdateRequest(BaseModel):
+    """Body of ``PATCH /schedules/{schedule_id}`` (partial update)."""
+
+    workflow_id: str | None = Field(default=None, description="Workflow to trigger")
+    workflow_version: str | None = Field(default=None, description="Version override")
+    trigger_type: ScheduleTriggerType | None = Field(
+        default=None, description="Trigger kind"
+    )
+    cron_expression: str | None = Field(default=None, description="CRON expression")
+    interval_seconds: float | None = Field(
+        default=None, ge=0.0, description="INTERVAL period"
+    )
+    run_at: datetime | None = Field(default=None, description="DATETIME one-shot time")
+    timezone: str | None = Field(default=None, description="Schedule timezone")
+    payload: dict[str, Any] | None = Field(default=None, description="Static inputs")
+    enabled: bool | None = Field(default=None, description="Enable/disable")
+    max_concurrent_runs: int | None = Field(
+        default=None, ge=1, description="Concurrency cap"
+    )
+
+
+class WorkflowListResponse(BaseModel):
+    """Result of ``GET /workflows`` and ``GET /workflows/{id}/versions``."""
+
+    total: int = Field(..., ge=0, description="Number of definitions returned")
+    workflows: list[WorkflowDefinition] = Field(
+        default_factory=list, description="Workflow definitions"
+    )
+
+
+class WorkflowRunListResponse(BaseModel):
+    """Result of ``GET /workflows/runs``."""
+
+    total: int = Field(..., ge=0, description="Number of runs returned")
+    runs: list[WorkflowRun] = Field(default_factory=list, description="Run snapshots")
+
+
+class ScheduleListResponse(BaseModel):
+    """Result of ``GET /schedules``."""
+
+    total: int = Field(..., ge=0, description="Number of schedules returned")
+    schedules: list[ScheduleSpec] = Field(default_factory=list, description="Schedules")
