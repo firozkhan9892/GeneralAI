@@ -109,6 +109,7 @@ class EmbeddingProvider(ABC):
 
     name: str = ""
     dimensions: int = 0
+    model_name: str = ""
 
     @abstractmethod
     def embed(self, texts: list[str]) -> list[list[float]]:

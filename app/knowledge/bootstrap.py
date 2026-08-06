@@ -8,6 +8,8 @@ call from the server factory and the lifespan.
 Phase 13a registers foundation registries (abstract stage contracts).
 Phase 13b adds concrete loaders, chunkers, the format parser,
 collection registry, namespace registry, and knowledge settings.
+Phase 13c adds embedding providers, embedding cache, vector stores,
+indexing pipeline, and analytics.
 """
 
 from __future__ import annotations
@@ -114,5 +116,32 @@ def register_knowledge_components(container: DependencyContainer) -> None:
 
     if not container.has(FormatParser):
         container.register_singleton(FormatParser)
+
+    # ── Embedding cache (13c) ────────────────────────────────────────
+    from app.knowledge.analytics import KnowledgeAnalytics
+    from app.knowledge.embeddings.cache import EmbeddingCache
+    from app.knowledge.embeddings.mock import MockEmbeddingProvider
+    from app.knowledge.vectorstores.in_memory import InMemoryVectorStore
+
+    if not container.has(EmbeddingCache):
+        settings = container.resolve(KnowledgeSettings)
+        container.register_singleton(
+            EmbeddingCache,
+            lambda: EmbeddingCache(max_size=settings.embedding_cache_size),
+        )
+
+    # ── Default embedding provider (13c) ────────────────────────────
+    provider_registry = container.resolve(EmbeddingProviderRegistry)
+    if "mock" not in provider_registry:
+        provider_registry.register("mock", MockEmbeddingProvider())
+
+    # ── Default vector store (13c) ──────────────────────────────────
+    store_registry = container.resolve(VectorStoreRegistry)
+    if "in_memory" not in store_registry:
+        store_registry.register("in_memory", InMemoryVectorStore())
+
+    # ── Analytics (13c) ─────────────────────────────────────────────
+    if not container.has(KnowledgeAnalytics):
+        container.register_singleton(KnowledgeAnalytics)
 
     log.info("Registered knowledge components with DI container")

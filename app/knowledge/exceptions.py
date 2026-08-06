@@ -74,3 +74,7 @@ class KnowledgeIndexError(KnowledgeError):
 
 class KnowledgeVersionError(KnowledgeError):
     """Raised when a document version conflict occurs."""
+
+
+class KnowledgeCacheError(KnowledgeError):
+    """Raised when an embedding cache operation fails."""

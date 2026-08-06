@@ -2,9 +2,8 @@
 
 Provides the abstract pipeline-stage contracts, domain models, typed
 registries, exceptions, events, and idempotent DI wiring for the
-knowledge subsystem.  Phase 13b adds concrete loaders, chunkers,
-the format parser, collection/namespace registries, and knowledge
-settings.
+knowledge subsystem.  Phase 13c adds embedding providers, embedding
+cache, vector stores, indexing pipeline, and analytics.
 """
 
 from __future__ import annotations
@@ -44,6 +43,7 @@ from app.knowledge.events import (
     EVENT_KNOWLEDGE_RETRIEVED,
 )
 from app.knowledge.exceptions import (
+    KnowledgeCacheError,
     KnowledgeChunkNotFoundError,
     KnowledgeCollectionNotFoundError,
     KnowledgeDocumentNotFoundError,
@@ -90,6 +90,11 @@ from app.knowledge.registry import (
 from app.knowledge.utils import compute_content_hash, estimate_token_count
 from app.knowledge.collection_registry import CollectionRegistry
 from app.knowledge.namespace_registry import NamespaceRegistry
+from app.knowledge.analytics import KnowledgeAnalytics, AnalyticsSummary
+from app.knowledge.embeddings.cache import EmbeddingCache, CacheStats
+from app.knowledge.embeddings.mock import MockEmbeddingProvider
+from app.knowledge.indexing.pipeline import IndexingPipeline
+from app.knowledge.vectorstores.in_memory import InMemoryVectorStore
 
 __all__ = [
     # Base abstractions
@@ -139,6 +144,7 @@ __all__ = [
     "KnowledgeIngestionError",
     "KnowledgeIndexError",
     "KnowledgeVersionError",
+    "KnowledgeCacheError",
     # Models
     "DocumentFormat",
     "IndexStatus",
@@ -170,4 +176,12 @@ __all__ = [
     "CitationBuilderRegistry",
     "CollectionRegistry",
     "NamespaceRegistry",
+    # Embeddings & vector stores (13c)
+    "KnowledgeAnalytics",
+    "AnalyticsSummary",
+    "EmbeddingCache",
+    "CacheStats",
+    "MockEmbeddingProvider",
+    "IndexingPipeline",
+    "InMemoryVectorStore",
 ]
