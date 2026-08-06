@@ -2,8 +2,9 @@
 
 Provides the abstract pipeline-stage contracts, domain models, typed
 registries, exceptions, events, and idempotent DI wiring for the
-knowledge subsystem.  Concrete loaders, chunkers, embedding providers,
-vector stores and retrievers are added in later phases.
+knowledge subsystem.  Phase 13b adds concrete loaders, chunkers,
+the format parser, collection/namespace registries, and knowledge
+settings.
 """
 
 from __future__ import annotations
@@ -21,6 +22,13 @@ from app.knowledge.base import (
     VectorStore,
 )
 from app.knowledge.bootstrap import register_knowledge_components
+from app.knowledge.config import KnowledgeSettings
+from app.knowledge.constants import (
+    CHARS_PER_TOKEN,
+    DEFAULT_CHUNK_OVERLAP,
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_NAMESPACE,
+)
 from app.knowledge.events import (
     EVENT_KNOWLEDGE_COLLECTION_CREATED,
     EVENT_KNOWLEDGE_COLLECTION_DELETED,
@@ -79,6 +87,9 @@ from app.knowledge.registry import (
     RetrieverRegistry,
     VectorStoreRegistry,
 )
+from app.knowledge.utils import compute_content_hash, estimate_token_count
+from app.knowledge.collection_registry import CollectionRegistry
+from app.knowledge.namespace_registry import NamespaceRegistry
 
 __all__ = [
     # Base abstractions
@@ -94,6 +105,15 @@ __all__ = [
     "RetrievalContext",
     # Bootstrapping
     "register_knowledge_components",
+    # Config / constants
+    "KnowledgeSettings",
+    "DEFAULT_CHUNK_SIZE",
+    "DEFAULT_CHUNK_OVERLAP",
+    "DEFAULT_NAMESPACE",
+    "CHARS_PER_TOKEN",
+    # Utils
+    "compute_content_hash",
+    "estimate_token_count",
     # Events
     "EVENT_KNOWLEDGE_NAMESPACE_CREATED",
     "EVENT_KNOWLEDGE_NAMESPACE_DELETED",
@@ -148,4 +168,6 @@ __all__ = [
     "ContextCompressorRegistry",
     "RerankerRegistry",
     "CitationBuilderRegistry",
+    "CollectionRegistry",
+    "NamespaceRegistry",
 ]
