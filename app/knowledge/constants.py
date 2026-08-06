@@ -44,3 +44,24 @@ META_KEY_SOURCE_URI: typing.Final[str] = "source_uri"
 META_KEY_FORMAT: typing.Final[str] = "format"
 META_KEY_TITLE: typing.Final[str] = "title"
 META_KEY_HEADING: typing.Final[str] = "heading"
+
+# ── BM25 defaults ────────────────────────────────────────────────────
+BM25_K1: typing.Final[float] = 1.5
+"""Term frequency saturation parameter."""
+
+BM25_B: typing.Final[float] = 0.75
+"""Length normalization parameter."""
+
+# ── Reciprocal Rank Fusion ──────────────────────────────────────────
+RRF_K: typing.Final[int] = 60
+"""RRF smoothing constant (k in 1/(k + rank))."""
+
+# ── Retrieval defaults ──────────────────────────────────────────────
+DEFAULT_TOP_K: typing.Final[int] = 10
+"""Default number of retrieval hits."""
+
+FILTER_OVERSAMPLE: typing.Final[int] = 8
+"""Multiplier for candidate set before applying metadata filters."""
+
+SNIPPET_LENGTH: typing.Final[int] = 200
+"""Maximum characters for citation snippets."""

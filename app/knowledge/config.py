@@ -10,9 +10,13 @@ from __future__ import annotations
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.knowledge.constants import (
+    BM25_B,
+    BM25_K1,
     DEFAULT_CHUNK_OVERLAP,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_NAMESPACE,
+    FILTER_OVERSAMPLE,
+    RRF_K,
 )
 
 
@@ -49,4 +53,25 @@ class KnowledgeSettings(BaseModel):
         default=3,
         ge=1,
         description="Number of document versions to retain",
+    )
+    bm25_k1: float = Field(
+        default=BM25_K1,
+        ge=0.0,
+        description="BM25 term frequency saturation parameter",
+    )
+    bm25_b: float = Field(
+        default=BM25_B,
+        ge=0.0,
+        le=1.0,
+        description="BM25 length normalization parameter",
+    )
+    rrf_k: int = Field(
+        default=RRF_K,
+        ge=1,
+        description="Reciprocal Rank Fusion smoothing constant",
+    )
+    filter_oversample: int = Field(
+        default=FILTER_OVERSAMPLE,
+        ge=1,
+        description="Candidate multiplier before metadata filtering",
     )

@@ -1,14 +1,15 @@
 """Retrieval and indexing analytics.
 
 Thread-safe recorder that tracks embeddings created, cache hit rate,
-indexing latency, search latency, and index size.  Provides summary
-aggregates for observability.
+indexing latency, search latency, retrieval query patterns, and index
+size.  Provides summary aggregates for observability.
 """
 
 from __future__ import annotations
 
 import threading
 import time
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -39,16 +40,23 @@ class AnalyticsSummary:
     avg_indexing_latency_ms: float = 0.0
     avg_search_latency_ms: float = 0.0
     index_size: int = 0
+    # Retrieval-specific fields
+    total_queries: int = 0
+    avg_query_latency_ms: float = 0.0
+    avg_hit_count: float = 0.0
+    collections: dict[str, int] = field(default_factory=dict)
+    top_queries: tuple[tuple[str, int], ...] = field(default_factory=tuple)
+    recent_retrievals: tuple[AnalyticsEntry, ...] = field(default_factory=tuple)
 
 
 class KnowledgeAnalytics:
     """Thread-safe analytics recorder for the knowledge subsystem.
 
     Records events (embeddings created, indexing latency, search latency,
-    cache hits/misses) and provides aggregated summaries.
+    cache hits/misses, retrieval queries) and provides aggregated summaries.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, max_entries: int = 1000) -> None:
         self._lock = threading.RLock()
         self._embeddings_created = 0
         self._cache_hits = 0
@@ -59,7 +67,14 @@ class KnowledgeAnalytics:
         self._search_operations = 0
         self._index_size = 0
         self._entries: list[AnalyticsEntry] = []
-        self._max_entries = 1000
+        self._max_entries = max_entries
+        # Retrieval-specific fields
+        self._total_queries = 0
+        self._total_query_latency_ms = 0.0
+        self._total_hit_count = 0
+        self._collection_queries: dict[str, int] = defaultdict(int)
+        self._query_counts: dict[str, int] = defaultdict(int)
+        self._retrieval_entries: list[AnalyticsEntry] = []
 
     def record_embedding_created(self, count: int = 1) -> None:
         """Record that *count* embeddings were created."""
@@ -111,10 +126,84 @@ class KnowledgeAnalytics:
         with self._lock:
             self._index_size = size
 
+    def record_retrieval(
+        self,
+        query: str,
+        collection_id: str = "",
+        namespace: str = "",
+        latency_ms: float = 0.0,
+        hit_count: int = 0,
+        top_score: float = 0.0,
+        avg_score: float = 0.0,
+        strategy: str = "hybrid",
+        reranked: bool = False,
+    ) -> None:
+        """Record a retrieval query event.
+
+        Args:
+            query: The retrieval query string.
+            collection_id: Target collection.
+            namespace: Isolating namespace.
+            latency_ms: Query latency.
+            hit_count: Number of hits returned.
+            top_score: Highest relevance score.
+            avg_score: Average relevance score.
+            strategy: Retrieval strategy used.
+            reranked: Whether reranking was applied.
+        """
+        entry = AnalyticsEntry(
+            event_type="retrieval",
+            timestamp=time.time(),
+            latency_ms=latency_ms,
+            value=float(hit_count),
+            metadata={
+                "query": query,
+                "collection_id": collection_id,
+                "namespace": namespace,
+                "top_score": top_score,
+                "avg_score": avg_score,
+                "strategy": strategy,
+                "reranked": reranked,
+            },
+        )
+        with self._lock:
+            self._total_queries += 1
+            self._total_query_latency_ms += latency_ms
+            self._total_hit_count += hit_count
+            self._collection_queries[collection_id] += 1
+            self._query_counts[query] += 1
+            self._retrieval_entries.append(entry)
+            if len(self._retrieval_entries) > self._max_entries:
+                self._retrieval_entries = self._retrieval_entries[-self._max_entries :]
+
+    def retrieval_summary(self) -> dict[str, Any]:
+        """Return retrieval-specific analytics.
+
+        Returns a dictionary with total_queries, avg_query_latency_ms,
+        avg_hit_count, collections, top_queries, and recent entries.
+        """
+        with self._lock:
+            total = self._total_queries
+            avg_latency = self._total_query_latency_ms / total if total > 0 else 0.0
+            avg_hits = self._total_hit_count / total if total > 0 else 0.0
+            top_queries = sorted(
+                self._query_counts.items(), key=lambda x: x[1], reverse=True
+            )[:10]
+            recent = tuple(self._retrieval_entries[-20:])
+            return {
+                "total_queries": total,
+                "avg_query_latency_ms": avg_latency,
+                "avg_hit_count": avg_hits,
+                "collections": dict(self._collection_queries),
+                "top_queries": tuple(top_queries),
+                "recent": recent,
+            }
+
     def summary(self) -> AnalyticsSummary:
         """Return an aggregated analytics snapshot."""
         with self._lock:
             total_cache = self._cache_hits + self._cache_misses
+            total = self._total_queries
             return AnalyticsSummary(
                 embeddings_created=self._embeddings_created,
                 cache_hits=self._cache_hits,
@@ -137,6 +226,20 @@ class KnowledgeAnalytics:
                     else 0.0
                 ),
                 index_size=self._index_size,
+                total_queries=total,
+                avg_query_latency_ms=(
+                    self._total_query_latency_ms / total if total > 0 else 0.0
+                ),
+                avg_hit_count=(self._total_hit_count / total if total > 0 else 0.0),
+                collections=dict(self._collection_queries),
+                top_queries=tuple(
+                    sorted(
+                        self._query_counts.items(),
+                        key=lambda x: x[1],
+                        reverse=True,
+                    )[:10]
+                ),
+                recent_retrievals=tuple(self._retrieval_entries[-20:]),
             )
 
     def clear(self) -> None:
@@ -151,3 +254,9 @@ class KnowledgeAnalytics:
             self._search_operations = 0
             self._index_size = 0
             self._entries.clear()
+            self._total_queries = 0
+            self._total_query_latency_ms = 0.0
+            self._total_hit_count = 0
+            self._collection_queries.clear()
+            self._query_counts.clear()
+            self._retrieval_entries.clear()

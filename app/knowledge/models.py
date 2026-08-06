@@ -336,3 +336,69 @@ class CitationResult(BaseModel):
     sources: tuple[SourceReference, ...] = Field(
         default_factory=tuple, description="Deduplicated source references"
     )
+
+
+class RetrievalResult(BaseModel):
+    """Final output of a retrieval pipeline execution."""
+
+    model_config = ConfigDict(frozen=True)
+
+    query: str = Field(..., description="Original user query")
+    rewritten_query: str = Field(default="", description="Rewritten/normalized query")
+    total: int = Field(default=0, ge=0, description="Total hits returned")
+    hits: tuple[RetrievalHit, ...] = Field(
+        default_factory=tuple, description="Ranked retrieval hits"
+    )
+    sources: tuple[SourceReference, ...] = Field(
+        default_factory=tuple, description="Deduplicated source references"
+    )
+    latency_ms: float = Field(
+        default=0.0, ge=0.0, description="Total retrieval latency in milliseconds"
+    )
+    strategy: str = Field(default="hybrid", description="Retrieval strategy used")
+    citations: tuple[Citation, ...] = Field(
+        default_factory=tuple, description="Citations for retrieved chunks"
+    )
+    analytics: dict[str, Any] | None = Field(
+        default=None, description="Optional analytics snapshot"
+    )
+
+
+class RetrievalAnalyticsEntry(BaseModel):
+    """A single recorded retrieval analytics event."""
+
+    model_config = ConfigDict(frozen=True)
+
+    query: str = Field(..., description="The retrieval query")
+    collection_id: str = Field(default="", description="Target collection")
+    namespace: str = Field(default="", description="Isolating namespace")
+    latency_ms: float = Field(default=0.0, ge=0.0, description="Retrieval latency")
+    hit_count: int = Field(default=0, ge=0, description="Number of hits returned")
+    top_score: float = Field(default=0.0, description="Highest relevance score")
+    avg_score: float = Field(default=0.0, description="Average relevance score")
+    strategy: str = Field(default="hybrid", description="Strategy used")
+    reranked: bool = Field(default=False, description="Whether reranking was applied")
+    timestamp: datetime = Field(default_factory=_utcnow_factory)
+
+
+class RetrievalAnalyticsSummary(BaseModel):
+    """Aggregated retrieval analytics snapshot."""
+
+    model_config = ConfigDict(frozen=True)
+
+    total_queries: int = Field(default=0, ge=0, description="Total queries executed")
+    avg_latency_ms: float = Field(
+        default=0.0, ge=0.0, description="Average query latency"
+    )
+    avg_hit_count: float = Field(
+        default=0.0, ge=0.0, description="Average hits per query"
+    )
+    collections: dict[str, int] = Field(
+        default_factory=dict, description="Query count per collection"
+    )
+    top_queries: tuple[tuple[str, int], ...] = Field(
+        default_factory=tuple, description="Most frequent queries with counts"
+    )
+    recent: tuple[RetrievalAnalyticsEntry, ...] = Field(
+        default_factory=tuple, description="Most recent analytics entries"
+    )

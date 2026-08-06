@@ -2,8 +2,10 @@
 
 Provides the abstract pipeline-stage contracts, domain models, typed
 registries, exceptions, events, and idempotent DI wiring for the
-knowledge subsystem.  Phase 13c adds embedding providers, embedding
-cache, vector stores, indexing pipeline, and analytics.
+knowledge subsystem.  Phase 13d adds the retrieval engine: hybrid
+retrieval (vector + BM25 + RRF), metadata filtering, query rewriting,
+multi-query expansion, context compression, reranking, citation
+building, and a unified retrieval pipeline.
 """
 
 from __future__ import annotations
@@ -70,8 +72,11 @@ from app.knowledge.models import (
     KnowledgeEvent,
     MetadataFilter,
     NamespaceMetadata,
+    RetrievalAnalyticsEntry,
+    RetrievalAnalyticsSummary,
     RetrievalHit,
     RetrievalQuery,
+    RetrievalResult,
     SourceReference,
     VectorSearchHit,
 )
@@ -95,6 +100,16 @@ from app.knowledge.embeddings.cache import EmbeddingCache, CacheStats
 from app.knowledge.embeddings.mock import MockEmbeddingProvider
 from app.knowledge.indexing.pipeline import IndexingPipeline
 from app.knowledge.vectorstores.in_memory import InMemoryVectorStore
+from app.knowledge.retrieval.bm25 import BM25Index, BM25Retriever
+from app.knowledge.retrieval.citations import DefaultCitationBuilder
+from app.knowledge.retrieval.compress import IdentityCompressor
+from app.knowledge.retrieval.filter import evaluate_filter, evaluate_filters
+from app.knowledge.retrieval.hybrid import HybridRetriever
+from app.knowledge.retrieval.multiquery import MultiQueryRetriever
+from app.knowledge.retrieval.pipeline import RetrievalPipeline
+from app.knowledge.retrieval.rerank import IdentityReranker
+from app.knowledge.retrieval.rewrite import IdentityQueryRewriter
+from app.knowledge.retrieval.vector import VectorRetriever
 
 __all__ = [
     # Base abstractions
@@ -184,4 +199,20 @@ __all__ = [
     "MockEmbeddingProvider",
     "IndexingPipeline",
     "InMemoryVectorStore",
+    # Retrieval engine (13d)
+    "BM25Index",
+    "BM25Retriever",
+    "VectorRetriever",
+    "HybridRetriever",
+    "MultiQueryRetriever",
+    "IdentityQueryRewriter",
+    "IdentityCompressor",
+    "IdentityReranker",
+    "DefaultCitationBuilder",
+    "RetrievalPipeline",
+    "evaluate_filter",
+    "evaluate_filters",
+    "RetrievalResult",
+    "RetrievalAnalyticsEntry",
+    "RetrievalAnalyticsSummary",
 ]
