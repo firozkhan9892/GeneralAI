@@ -25,7 +25,9 @@ def register_llm_components(container: DependencyContainer) -> None:
     Args:
         container: The application's :class:`DependencyContainer`.
     """
-    container.register_singleton(ProviderRegistry)
-    container.register_singleton(ProviderFactory)
+    if not container.has(ProviderRegistry):
+        container.register_singleton(ProviderRegistry)
+    if not container.has(ProviderFactory):
+        container.register_singleton(ProviderFactory)
     register_router_components(container)
-    log.info("Registered %d LLM provider components", 2)
+    log.info("Registered LLM provider components")
