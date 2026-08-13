@@ -1,19 +1,14 @@
-# Core
-pydantic>=2.5,<3.0
-pydantic-settings>=2.1,<3.0
-
-# Web Framework
-fastapi>=0.104,<1.0
-uvicorn[standard]>=0.24,<1.0
-
-# Testing
-pytest>=8.0,<9.0
-pytest-cov>=4.1,<6.0
-pytest-asyncio>=0.23,<1.0
-
-# Linting & Type checking
-ruff>=0.1,<1.0
-mypy>=1.7,<2.0
-
-# Development
-black>=24.0,<25.0
+# GeneralAI dependency entry point.
+#
+# Runtime, optional, and development dependencies are declared in
+# pyproject.toml ([project.dependencies], [project.optional-dependencies]).
+# This file installs the package in editable mode together with its
+# development extras so `pip install -r requirements.txt` keeps working.
+#
+# Optional feature extras (not included by default):
+#   pip install -e .[pdf]        # pypdf loader
+#   pip install -e .[html]       # beautifulsoup4 HTML loader
+#   pip install -e .[embeddings] # sentence-transformers embeddings
+#   pip install -e .[chroma]     # chromadb vector store
+#   pip install -e .[faiss]      # faiss vector store
+-e .[dev]
