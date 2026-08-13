@@ -17,6 +17,12 @@ from starlette.middleware.cors import CORSMiddleware
 from app.agents.bootstrap import register_agent_manager_components
 from app.agents.manager import AgentManager
 from app.automation.bootstrap import register_automation_components
+from app.knowledge.bootstrap import register_knowledge_components
+from app.knowledge.collection_registry import CollectionRegistry
+from app.knowledge.analytics import KnowledgeAnalytics
+from app.knowledge.indexing.pipeline import IndexingPipeline
+from app.knowledge.namespace_registry import NamespaceRegistry
+from app.knowledge.retrieval.pipeline import RetrievalPipeline
 from app.automation.exceptions import (
     WorkflowApprovalError,
     WorkflowConcurrencyError,
@@ -33,6 +39,7 @@ from app.server.config import ServerSettings
 from app.server.metrics import MetricsCollector
 from app.server.routers.chat import router as chat_router
 from app.server.routers.health import router as health_router
+from app.server.routers.knowledge import router as knowledge_router
 from app.server.routers.memory import router as memory_router
 from app.server.routers.tools import router as tools_router
 from app.server.routers.workflows import (
@@ -188,6 +195,7 @@ def create_app(
     register_agent_manager_components(container)
     register_llm_components(container)
     register_automation_components(container)
+    register_knowledge_components(container)
 
     metrics = MetricsCollector()
     from app.server.security import RateLimiter
@@ -231,6 +239,41 @@ def create_app(
     )
     app.state.workflow_service = container.resolve(WorkflowService)
 
+    # Knowledge / RAG components
+    app.state.collection_registry = container.resolve(CollectionRegistry)
+    app.state.namespace_registry = container.resolve(NamespaceRegistry)
+    app.state.knowledge_analytics = container.resolve(KnowledgeAnalytics)
+
+    # Build knowledge pipelines from registered components
+    from app.knowledge.embeddings.cache import EmbeddingCache
+    from app.knowledge.documents.chunkers.recursive import RecursiveChunker
+    from app.knowledge.documents.loaders.text import TextLoader
+    from app.knowledge.retrieval.bm25 import BM25Retriever, BM25Index
+    from app.knowledge.registry import EmbeddingProviderRegistry, VectorStoreRegistry
+
+    _cache = EmbeddingCache()
+    _provider_registry = container.resolve(EmbeddingProviderRegistry)
+    _store_registry = container.resolve(VectorStoreRegistry)
+    _provider = _provider_registry.get_or_raise("mock")
+    _store = _store_registry.get_or_raise("in_memory")
+
+    app.state.indexing_pipeline = IndexingPipeline(
+        loader=TextLoader(),
+        chunker=RecursiveChunker(),
+        embedding_provider=_provider,
+        vector_store=_store,
+        cache=_cache,
+        analytics=app.state.knowledge_analytics,
+    )
+
+    bm25 = BM25Retriever(index=BM25Index())
+    app.state.retrieval_pipeline = RetrievalPipeline(
+        retriever=bm25,
+        embedding_provider=_provider,
+        vector_store=_store,
+        analytics=app.state.knowledge_analytics,
+    )
+
     # CORS (opt-in)
     if settings.cors_origins:
         app.add_middleware(
@@ -256,6 +299,7 @@ def create_app(
     app.include_router(tools_router, dependencies=protected_deps)
     app.include_router(workflows_router, dependencies=protected_deps)
     app.include_router(workflows_schedule_router, dependencies=protected_deps)
+    app.include_router(knowledge_router, dependencies=protected_deps)
     # Register agent routes individually — WS route must NOT use HTTP
     # dependencies, so we don't include the whole agent_router with deps.
     from app.server.routers.agent import (

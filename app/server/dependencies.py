@@ -7,6 +7,11 @@ from fastapi import Request
 from app.agents.manager import AgentManager
 from app.automation.workflow import WorkflowService
 from app.kernel.memory.engine import MemoryEngine
+from app.knowledge.analytics import KnowledgeAnalytics
+from app.knowledge.collection_registry import CollectionRegistry
+from app.knowledge.indexing.pipeline import IndexingPipeline
+from app.knowledge.namespace_registry import NamespaceRegistry
+from app.knowledge.retrieval.pipeline import RetrievalPipeline
 from app.server.config import ServerSettings
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
@@ -50,3 +55,28 @@ def get_rate_limiter(request: Request):
 def get_workflow_service(request: Request) -> WorkflowService:
     """Return the shared WorkflowService."""
     return request.app.state.workflow_service
+
+
+def get_indexing_pipeline(request: Request) -> IndexingPipeline:
+    """Return the shared IndexingPipeline."""
+    return request.app.state.indexing_pipeline
+
+
+def get_retrieval_pipeline(request: Request) -> RetrievalPipeline:
+    """Return the shared RetrievalPipeline."""
+    return request.app.state.retrieval_pipeline
+
+
+def get_collection_registry(request: Request) -> CollectionRegistry:
+    """Return the shared CollectionRegistry."""
+    return request.app.state.collection_registry
+
+
+def get_namespace_registry(request: Request) -> NamespaceRegistry:
+    """Return the shared NamespaceRegistry."""
+    return request.app.state.namespace_registry
+
+
+def get_knowledge_analytics(request: Request) -> KnowledgeAnalytics:
+    """Return the shared KnowledgeAnalytics."""
+    return request.app.state.knowledge_analytics

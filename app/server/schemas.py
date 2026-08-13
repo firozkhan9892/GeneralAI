@@ -16,6 +16,11 @@ from app.automation.models import (
 )
 from app.kernel.agent.models import AgentRunConfig
 from app.kernel.memory.models import MemorySearchHit
+from app.knowledge.models import (
+    CollectionMetadata,
+    NamespaceMetadata,
+    RetrievalResult,
+)
 
 
 class ChatRequest(BaseModel):
@@ -214,3 +219,101 @@ class ScheduleListResponse(BaseModel):
 
     total: int = Field(..., ge=0, description="Number of schedules returned")
     schedules: list[ScheduleSpec] = Field(default_factory=list, description="Schedules")
+
+
+# ── Knowledge / RAG Schemas ──────────────────────────────────────────
+
+
+class KnowledgeIngestRequest(BaseModel):
+    """Body of ``POST /knowledge/documents``."""
+
+    content: str = Field(..., description="Document content (base64 for binary)")
+    source_uri: str = Field(default="", description="Origin URI (file/path/url)")
+    collection_id: str = Field(default="", description="Target collection ID")
+    namespace: str = Field(default="", description="Isolating namespace")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, description="Arbitrary filterable metadata"
+    )
+
+
+class KnowledgeIngestResponse(BaseModel):
+    """Result of document ingestion."""
+
+    doc_id: str = Field(..., description="Ingested document identifier")
+    source_uri: str = Field(..., description="Origin URI")
+    chunk_count: int = Field(..., ge=0, description="Number of chunks created")
+    collection_id: str = Field(..., description="Owning collection")
+
+
+class KnowledgeTextIngestRequest(BaseModel):
+    """Body of ``POST /knowledge/text``."""
+
+    text: str = Field(..., min_length=1, description="Raw text content")
+    source_uri: str = Field(default="text-input", description="Origin identifier")
+    collection_id: str = Field(default="", description="Target collection ID")
+    namespace: str = Field(default="", description="Isolating namespace")
+
+
+class KnowledgeSearchRequest(BaseModel):
+    """Body of ``POST /knowledge/search``."""
+
+    query: str = Field(..., min_length=1, description="Search query")
+    collection_id: str = Field(default="", description="Target collection")
+    namespace: str = Field(default="", description="Isolating namespace")
+    top_k: int = Field(default=10, ge=1, le=100, description="Maximum hits")
+    strategy: str = Field(default="hybrid", description="vector|bm25|hybrid")
+
+
+class KnowledgeQueryRequest(BaseModel):
+    """Body of ``POST /knowledge/query``."""
+
+    query: str = Field(..., min_length=1, description="Natural language query")
+    collection_id: str = Field(default="", description="Target collection")
+    namespace: str = Field(default="", description="Isolating namespace")
+    top_k: int = Field(default=10, ge=1, le=100, description="Maximum hits")
+    include_sources: bool = Field(default=True, description="Attach source references")
+
+
+class KnowledgeSearchResponse(BaseModel):
+    """Result of a knowledge search/query."""
+
+    query: str = Field(..., description="Original query")
+    total: int = Field(..., ge=0, description="Number of hits returned")
+    hits: list[RetrievalResult] = Field(
+        default_factory=list, description="Ranked retrieval results"
+    )
+    latency_ms: float = Field(..., ge=0.0, description="Query latency in milliseconds")
+
+
+class KnowledgeCollectionsResponse(BaseModel):
+    """Result of ``GET /knowledge/collections``."""
+
+    total: int = Field(..., ge=0, description="Number of collections")
+    collections: list[CollectionMetadata] = Field(
+        default_factory=list, description="Collection metadata"
+    )
+
+
+class KnowledgeCollectionCreateRequest(BaseModel):
+    """Body of ``POST /knowledge/collections``."""
+
+    collection_id: str = Field(..., min_length=1, description="Unique collection ID")
+    name: str = Field(default="", description="Human-readable name")
+    namespace: str = Field(default="", description="Isolating namespace")
+    description: str = Field(default="", description="Optional description")
+
+
+class KnowledgeNamespacesResponse(BaseModel):
+    """Result of ``GET /knowledge/namespaces``."""
+
+    total: int = Field(..., ge=0, description="Number of namespaces")
+    namespaces: list[NamespaceMetadata] = Field(
+        default_factory=list, description="Namespace metadata"
+    )
+
+
+class KnowledgeNamespaceCreateRequest(BaseModel):
+    """Body of ``POST /knowledge/namespaces``."""
+
+    name: str = Field(..., min_length=1, description="Unique namespace name")
+    description: str = Field(default="", description="Optional description")

@@ -87,6 +87,8 @@ class IndexingPipeline:
 
         # 2. Chunk
         chunks = self._chunker.chunk(doc)
+        # Update document with chunk IDs
+        doc = doc.model_copy(update={"chunk_ids": tuple(c.chunk_id for c in chunks)})
 
         # 3. Embed (with caching)
         texts = [c.content for c in chunks]
