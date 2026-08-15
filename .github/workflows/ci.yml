@@ -1,0 +1,154 @@
+name: CI
+
+# Automated quality gates for GeneralAI.
+# Runs on every push to main and every pull request targeting main.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Least-privilege: the workflow only needs to read the repository.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Quality Gates
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          # Cache keyed on the documented install path so the dev
+          # dependency set is reused across runs.
+          cache-dependency-path: requirements.txt
+
+      # Documented packaging path: installs the package in editable mode
+      # together with the development extras (pytest, mypy, ruff, build).
+      - name: Install package with dev extras
+        run: pip install -r requirements.txt
+
+      - name: Run test suite
+        run: python -m pytest -q
+
+      - name: Type check
+        run: python -m mypy . --no-error-summary
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Format check
+        run: python -m ruff format --check .
+
+  package:
+    name: Packaging Verification
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      # Only the build frontend is required here; `python -m build`
+      # creates isolated build environments for the sdist and wheel.
+      - name: Install build frontend
+        run: pip install build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Verify build artifacts and metadata
+        run: |
+          python - <<'EOF'
+          import glob
+          import pathlib
+          import tarfile
+          import zipfile
+
+          wheels = glob.glob("dist/*.whl")
+          sdists = glob.glob("dist/*.tar.gz")
+          assert len(wheels) == 1, f"expected exactly 1 wheel, got {wheels}"
+          assert len(sdists) == 1, f"expected exactly 1 sdist, got {sdists}"
+
+          wheel = pathlib.Path(wheels[0])
+          sdist = pathlib.Path(sdists[0])
+
+          with zipfile.ZipFile(wheel) as zf:
+              meta_name = [n for n in zf.namelist() if n.endswith("METADATA")][0]
+              meta = zf.read(meta_name).decode()
+          assert "Name: generalai" in meta, "package name mismatch"
+          assert "Version: 0.1.0" in meta, "package version mismatch"
+          assert "Requires-Dist: numpy" in meta, "missing numpy runtime dependency"
+
+          with tarfile.open(sdist) as tf:
+              names = tf.getnames()
+          assert "generalai-0.1.0/app/__init__.py" in names, "sdist missing app package"
+
+          print(f"artifacts OK: {wheel.name}, {sdist.name}")
+          EOF
+
+      - name: Install wheel into a clean environment
+        run: |
+          python -m venv /tmp/venv-wheel
+          /tmp/venv-wheel/bin/pip install --quiet "dist/*.whl"
+
+      # Run from /tmp so the repository's local app/ tree cannot shadow
+      # the installed wheel (true import isolation).
+      - name: Verify imports from installed wheel
+        run: |
+          cd /tmp
+          /tmp/venv-wheel/bin/python -c "import app; print('import app OK', app.__version__)"
+          /tmp/venv-wheel/bin/python -c "from app.server.app import create_app; create_app(); print('create_app OK')"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: generalai-dist
+          path: dist/
+
+  optional-imports:
+    name: Imports Without Optional Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      # Base install only — no optional extras (faiss, chromadb, pypdf,
+      # beautifulsoup4, sentence-transformers) should be pulled in.
+      - name: Install base package only (no optional extras)
+        run: |
+          python -m venv /tmp/venv-base
+          /tmp/venv-base/bin/pip install --quiet .
+
+      - name: Confirm optional dependencies are absent
+        run: |
+          /tmp/venv-base/bin/python - <<'EOF'
+          import importlib.util
+          optional = ["faiss", "chromadb", "pypdf", "bs4", "sentence_transformers"]
+          present = [m for m in optional if importlib.util.find_spec(m) is not None]
+          assert not present, f"optional deps unexpectedly present: {present}"
+          print("optional dependencies absent as expected")
+          EOF
+
+      # Run from /tmp so the repository's local app/ tree cannot shadow
+      # the installed package (true import isolation).
+      - name: Verify imports without optional dependencies
+        run: |
+          cd /tmp
+          /tmp/venv-base/bin/python -c "import app; print('import app OK', app.__version__)"
+          /tmp/venv-base/bin/python -c "from app.server.app import create_app; create_app(); print('create_app OK')"

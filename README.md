@@ -65,6 +65,7 @@ curl http://localhost:8000/health
 | [TOOLS.md](docs/TOOLS.md) | Tool system guide |
 | [CONFIGURATION.md](docs/CONFIGURATION.md) | Configuration reference |
 | [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | Developer onboarding |
+| [CI.md](docs/CI.md) | Continuous integration & quality gates |
 | [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Troubleshooting guide |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment guide |
 
@@ -101,7 +102,8 @@ See [CONFIGURATION.md](docs/CONFIGURATION.md) for the full reference.
 | Phase 13c | ✅ Complete | Embeddings & vector storage |
 | Phase 13d | ✅ Complete | Retrieval engine & RAG core |
 | Phase 14 | ✅ Complete | Production readiness audit |
-| Phase 14.1 | 🔄 In Progress | Production polish & documentation |
+| Phase 14.1 | ✅ Complete | Production polish & documentation |
+| Phase 14.4 | ✅ Complete | GitHub Actions CI/CD & automated quality gates |
 
 ## License
 
