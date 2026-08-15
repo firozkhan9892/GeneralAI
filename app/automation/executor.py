@@ -104,6 +104,15 @@ class WorkflowExecutor:
         self._clock: Clock = clock or SystemClock()
 
     # ------------------------------------------------------------------
+    # Registry access
+    # ------------------------------------------------------------------
+
+    @property
+    def step_type_registry(self) -> StepTypeRegistry:
+        """Return the registry of step type executors."""
+        return self._step_types
+
+    # ------------------------------------------------------------------
     # Step type registration
     # ------------------------------------------------------------------
 

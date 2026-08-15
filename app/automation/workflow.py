@@ -26,7 +26,7 @@ from app.automation.exceptions import (
     WorkflowValidationError,
 )
 from app.automation.executor import WorkflowExecutor
-from app.automation.graph import WorkflowGraph
+from app.automation.graph_exporter import WorkflowGraphExporter
 from app.automation.models import (
     ApprovalStatus,
     RunTrigger,
@@ -61,40 +61,6 @@ RunIdFactory = Callable[[], str]
 def _default_id_factory() -> str:
     """Return a random hex identifier."""
     return uuid.uuid4().hex
-
-
-class WorkflowGraphExporter:
-    """Export a workflow definition to a JSON-safe graph representation.
-
-    Produces ``nodes`` (step id/type/name), ``edges`` (dependency pairs)
-    and the deterministic topological ordering for rendering or analysis.
-    """
-
-    def export(self, definition: WorkflowDefinition) -> dict[str, Any]:
-        """Return a JSON-safe graph description of *definition*."""
-        graph = WorkflowGraph(definition.steps)
-        nodes = [
-            {
-                "id": step.id,
-                "type": step.type.value,
-                "name": step.name,
-                "description": step.description,
-            }
-            for step in definition.steps
-        ]
-        edges = [
-            {"source": dep, "target": step.id}
-            for step in definition.steps
-            for dep in step.depends_on
-        ]
-        return {
-            "workflow_id": definition.id,
-            "version": definition.version,
-            "status": definition.status.value,
-            "nodes": nodes,
-            "edges": edges,
-            "topological_order": graph.topological_order(),
-        }
 
 
 class WorkflowService:
@@ -661,7 +627,7 @@ class WorkflowService:
     @property
     def step_type_registry(self):
         """Return the executor's step type registry."""
-        return self._executor._step_types  # noqa: SLF001
+        return self._executor.step_type_registry
 
     @property
     def event_store(self) -> EventStore:

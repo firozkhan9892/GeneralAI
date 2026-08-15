@@ -56,10 +56,19 @@ def executor() -> WorkflowExecutor:
     return ex
 
 
+def test_step_type_registry_is_exposed(executor: WorkflowExecutor) -> None:
+    """The executor exposes its step-type registry through a public accessor."""
+    assert executor.step_type_registry is not None
+    # Backed by the same object registered at construction time.
+    assert isinstance(executor.step_type_registry, StepTypeRegistry)
+    assert executor.step_type_registry.get(WorkflowStepType.TRANSFORM) is not None
+
+
 def _set_task_executor(executor: WorkflowExecutor, fn) -> None:
     """Register a TASK executor, replacing any existing one."""
-    executor._step_types.unregister(WorkflowStepType.TASK)
-    executor._step_types.register(WorkflowStepType.TASK, fn)
+    registry = executor.step_type_registry
+    registry.unregister(WorkflowStepType.TASK)
+    registry.register(WorkflowStepType.TASK, fn)
 
 
 def _echo_step_executor() -> object:

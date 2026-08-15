@@ -177,6 +177,19 @@ def test_export_graph(service) -> None:
     assert graph["topological_order"] == ["a", "b"]
 
 
+def test_workflow_graph_exporter_is_reexported() -> None:
+    """The exporter remains importable from the service's module path."""
+    from app.automation import graph_exporter as exporter_module
+    from app.automation.workflow import WorkflowGraphExporter
+
+    assert WorkflowGraphExporter is exporter_module.WorkflowGraphExporter
+
+
+def test_service_step_type_registry_uses_executor_accessor(service) -> None:
+    """The service exposes the executor's registry through its public accessor."""
+    assert service.step_type_registry is service._executor.step_type_registry
+
+
 # ----------------------------------------------------------------------
 # Execution
 # ----------------------------------------------------------------------
