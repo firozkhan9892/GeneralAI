@@ -34,7 +34,13 @@ from app.automation.exceptions import (
 from app.automation.workflow import WorkflowService
 from app.core.container import DependencyContainer
 from app.core.exceptions import GeneralAIError
-from app.llm.bootstrap import register_llm_components
+from app.llm.bootstrap import (
+    register_default_llm_providers,
+    register_llm_components,
+)
+from app.llm.config import LLMSettings
+from app.llm.factory import ProviderFactory
+from app.llm.registry import ProviderRegistry
 from app.server.config import ServerSettings
 from app.server.metrics import MetricsCollector
 from app.server.routers.chat import router as chat_router
@@ -171,6 +177,7 @@ def create_app(
     *,
     container: DependencyContainer | None = None,
     settings: ServerSettings | None = None,
+    llm_settings: LLMSettings | None = None,
     discover_tools: bool = True,
 ) -> FastAPI:
     """Build and return a configured :class:`FastAPI` application.
@@ -182,6 +189,9 @@ def create_app(
         settings: Optional :class:`ServerSettings`.  Defaults to a
             permissive dev configuration (no API key, rate limiting
             enabled at 60 req/min).
+        llm_settings: Optional :class:`LLMSettings`.  Defaults to the
+            environment (``API_MODE``, provider credentials).  In mock
+            mode no credentials are required.
         discover_tools: When ``True`` (default) the built-in tool
             catalogue plus planning tools are discovered on startup
             if the registry is empty.
@@ -196,6 +206,13 @@ def create_app(
     register_llm_components(container)
     register_automation_components(container)
     register_knowledge_components(container)
+
+    # Register default LLM providers from configuration (mock by default).
+    register_default_llm_providers(
+        container.resolve(ProviderRegistry),
+        container.resolve(ProviderFactory),
+        settings=llm_settings,
+    )
 
     metrics = MetricsCollector()
     from app.server.security import RateLimiter

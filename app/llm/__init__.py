@@ -9,9 +9,13 @@ deterministic mock for testing.
 from __future__ import annotations
 
 from app.llm.base import BaseLLMProvider
-from app.llm.bootstrap import register_llm_components
+from app.llm.bootstrap import (
+    register_default_llm_providers,
+    register_llm_components,
+)
 from app.llm.capability_matrix import CapabilityMatrix
 from app.llm.circuit_breaker import CircuitBreaker
+from app.llm.config import LLMProviderConfig, LLMSettings
 from app.llm.cost_optimizer import CostOptimizer
 from app.llm.exceptions import (
     LLMError,
@@ -135,6 +139,9 @@ __all__ = [
     "HttpResponse",
     "UrllibHttpTransport",
     "register_llm_components",
+    "register_default_llm_providers",
+    "LLMSettings",
+    "LLMProviderConfig",
     "LLMRouter",
     "CapabilityMatrix",
     "CircuitBreaker",

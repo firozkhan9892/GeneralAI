@@ -25,6 +25,23 @@ ENV_DEBUG: Final[str] = f"{ENV_PREFIX}DEBUG"
 ENV_ENVIRONMENT: Final[str] = f"{ENV_PREFIX}ENVIRONMENT"
 
 # ------------------------------------------------------------------
+# LLM provider configuration
+# ------------------------------------------------------------------
+ENV_API_MODE: Final[str] = f"{ENV_PREFIX}API_MODE"
+ENV_OPENAI_API_KEY: Final[str] = f"{ENV_PREFIX}OPENAI_API_KEY"
+ENV_OPENAI_MODEL: Final[str] = f"{ENV_PREFIX}OPENAI_MODEL"
+ENV_OPENAI_URL: Final[str] = f"{ENV_PREFIX}OPENAI_URL"
+ENV_OPENROUTER_API_KEY: Final[str] = f"{ENV_PREFIX}OPENROUTER_API_KEY"
+ENV_OPENROUTER_MODEL: Final[str] = f"{ENV_PREFIX}OPENROUTER_MODEL"
+ENV_OPENROUTER_URL: Final[str] = f"{ENV_PREFIX}OPENROUTER_URL"
+ENV_GEMINI_API_KEY: Final[str] = f"{ENV_PREFIX}GEMINI_API_KEY"
+ENV_GEMINI_MODEL: Final[str] = f"{ENV_PREFIX}GEMINI_MODEL"
+ENV_OLLAMA_MODEL: Final[str] = f"{ENV_PREFIX}OLLAMA_MODEL"
+ENV_OLLAMA_URL: Final[str] = f"{ENV_PREFIX}OLLAMA_URL"
+DEFAULT_API_MODE: Final[str] = "mock"
+LLM_API_MODES: Final[list[str]] = ["mock", "real"]
+
+# ------------------------------------------------------------------
 # Path defaults (relative to project root)
 # ------------------------------------------------------------------
 DEFAULT_CONFIG_DIR: Final[str] = "config"
