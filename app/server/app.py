@@ -39,6 +39,7 @@ from app.llm.bootstrap import (
     register_llm_components,
 )
 from app.llm.config import LLMSettings
+from app.llm.llm_router import LLMRouter
 from app.llm.factory import ProviderFactory
 from app.llm.registry import ProviderRegistry
 from app.server.config import ServerSettings
@@ -207,11 +208,13 @@ def create_app(
     register_automation_components(container)
     register_knowledge_components(container)
 
-    # Register default LLM providers from configuration (mock by default).
+    # Register default LLM providers from configuration (mock by default)
+    # and wire them into the LLMRouter health/circuit/fallback infrastructure.
     register_default_llm_providers(
         container.resolve(ProviderRegistry),
         container.resolve(ProviderFactory),
         settings=llm_settings,
+        router=container.resolve(LLMRouter),
     )
 
     metrics = MetricsCollector()

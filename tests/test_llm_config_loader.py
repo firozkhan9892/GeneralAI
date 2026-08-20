@@ -16,6 +16,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.core.container import DependencyContainer
 from app.llm.base import ChatRequest
 from app.llm.models import ChatResponse, Message, Role, ResponseFormat, StreamChunk
 from app.llm.bootstrap import (
@@ -28,6 +29,7 @@ from app.llm.config import (
     build_llm_settings_from_env,
 )
 from app.llm.factory import ProviderFactory
+from app.llm.llm_router import LLMRouter
 from app.llm.providers import MockProvider, OpenAIProvider, OpenRouterProvider
 from app.llm.providers.ollama import OllamaProvider
 from app.llm.registry import ProviderRegistry
@@ -331,7 +333,9 @@ class TestCreateAppIntegration:
     def test_mock_provider_generates_valid_chat_response(self) -> None:
         """MockProvider.generate() must return a ChatResponse with all required fields."""
         provider = MockProvider()
-        request = ChatRequest(messages=(Message(role=Role.USER, content="Hello"),), model="mock-1")
+        request = ChatRequest(
+            messages=(Message(role=Role.USER, content="Hello"),), model="mock-1"
+        )
         response = provider.generate(request)
         assert isinstance(response, ChatResponse)
         assert response.content is not None
@@ -345,7 +349,9 @@ class TestCreateAppIntegration:
     def test_mock_provider_generate_no_secret_leakage(self) -> None:
         """MockProvider response must not contain credential-like values."""
         provider = MockProvider()
-        request = ChatRequest(messages=(Message(role=Role.USER, content="Hello world"),), model="mock-1")
+        request = ChatRequest(
+            messages=(Message(role=Role.USER, content="Hello world"),), model="mock-1"
+        )
         response = provider.generate(request)
         assert "sk-" not in response.content
         assert "api_key" not in response.content.lower()
@@ -354,7 +360,9 @@ class TestCreateAppIntegration:
     def test_mock_provider_stream_yields_chunks(self) -> None:
         """MockProvider.stream() must yield StreamChunk objects."""
         provider = MockProvider()
-        request = ChatRequest(messages=(Message(role=Role.USER, content="Hello world"),), model="mock-1")
+        request = ChatRequest(
+            messages=(Message(role=Role.USER, content="Hello world"),), model="mock-1"
+        )
         chunks = list(provider.stream(request))
         assert len(chunks) > 0
         for chunk in chunks:
@@ -364,7 +372,9 @@ class TestCreateAppIntegration:
     def test_mock_provider_with_echo_input_preserves_content(self) -> None:
         """MockProvider with echo_input=True must echo the user message."""
         provider = MockProvider(echo_input=True)
-        request = ChatRequest(messages=(Message(role=Role.USER, content="Test message"),), model="mock-1")
+        request = ChatRequest(
+            messages=(Message(role=Role.USER, content="Test message"),), model="mock-1"
+        )
         response = provider.generate(request)
         assert "Echo: Test message" in response.content
 
@@ -379,7 +389,144 @@ class TestCreateAppIntegration:
         response = provider.generate(request)
         assert response.content is not None
         import json
+
         parsed = json.loads(response.content)
         assert "model" in parsed
         assert "prompt" in parsed
         assert "reply" in parsed
+
+
+# ---------------------------------------------------------------------------
+# Phase 14.9 — Provider health and failure management
+# ---------------------------------------------------------------------------
+
+
+class TestProviderHealthAndFailureManagement:
+    """Verify that register_default_llm_providers wires providers into
+    the LLMRouter's health monitoring, circuit breaker, and fallback
+    infrastructure when a router is provided.
+
+    All tests run in mock mode — no external network calls.
+    """
+
+    def test_mock_provider_healthy_after_registration(self) -> None:
+        """After create_app(), the mock provider must be marked healthy."""
+        app = create_app()
+        router = app.state.llm_router
+        assert "mock" in router.get_available_providers()
+        assert router._health.is_healthy("mock")
+
+    def test_mock_provider_circuit_breaker_initialized(self) -> None:
+        """After registration a CircuitBreaker exists for mock in CLOSED state."""
+        from app.llm.router_models import CircuitState
+
+        app = create_app()
+        router = app.state.llm_router
+        breaker = router._circuit_breakers.get("mock")
+        assert breaker is not None
+        assert breaker.state == CircuitState.CLOSED
+
+    def test_mock_provider_health_snapshot_after_registration(self) -> None:
+        """Health snapshot shows positive success count after registration."""
+        app = create_app()
+        router = app.state.llm_router
+        snapshot = router._health.get_snapshot("mock")
+        assert snapshot is not None
+        assert snapshot.success_count >= 1
+        assert snapshot.failure_count == 0
+        assert snapshot.success_rate == 1.0
+
+    def test_fallback_manager_available_after_registration(self) -> None:
+        """Fallback manager is present and can set chains for registered providers."""
+        app = create_app()
+        router = app.state.llm_router
+        assert router._fallback is not None
+        router._fallback.set_fallback_chain("mock", ["mock"])
+        chain = router._fallback.get_fallback_chain("mock")
+        assert chain == []
+
+    def test_register_with_router_idempotent(self) -> None:
+        """Calling register_default_llm_providers twice does not raise."""
+        container = DependencyContainer()
+        register_llm_components(container)
+        router = container.resolve(LLMRouter)
+        registry = container.resolve(ProviderRegistry)
+        factory = container.resolve(ProviderFactory)
+        settings = LLMSettings(api_mode="mock")
+
+        register_default_llm_providers(registry, factory, settings, router=router)
+        register_default_llm_providers(registry, factory, settings, router=router)
+
+        assert registry.has("mock")
+        assert "mock" in router.get_available_providers()
+        breaker = router._circuit_breakers.get("mock")
+        assert breaker is not None
+
+    def test_register_without_router_still_populates_registry(self) -> None:
+        """When router is None, providers are registered in the registry only."""
+        registry = ProviderRegistry()
+        factory = ProviderFactory()
+        settings = LLMSettings(api_mode="mock")
+        register_default_llm_providers(registry, factory, settings)
+        assert registry.has("mock")
+
+    def test_real_mode_wires_provider_into_router(self) -> None:
+        """In real mode with credentials, providers are wired into router."""
+        container = DependencyContainer()
+        register_llm_components(container)
+        router = container.resolve(LLMRouter)
+        registry = container.resolve(ProviderRegistry)
+        factory = container.resolve(ProviderFactory)
+        settings = LLMSettings(
+            api_mode="real",
+            providers=(LLMProviderConfig(name="openai", api_key="sk-test-123"),),
+        )
+        register_default_llm_providers(registry, factory, settings, router=router)
+
+        assert "openai" in router.get_available_providers()
+        assert router._health.is_healthy("openai")
+        breaker = router._circuit_breakers.get("openai")
+        assert breaker is not None
+
+    def test_real_mode_no_credentials_skips_wiring(self) -> None:
+        """Real mode with missing credentials skips both registry and router."""
+        container = DependencyContainer()
+        register_llm_components(container)
+        router = container.resolve(LLMRouter)
+        registry = container.resolve(ProviderRegistry)
+        factory = container.resolve(ProviderFactory)
+        settings = LLMSettings(
+            api_mode="real",
+            providers=(LLMProviderConfig(name="openai"),),
+        )
+        register_default_llm_providers(registry, factory, settings, router=router)
+
+        assert not registry.has("openai")
+        assert "openai" not in router.get_available_providers()
+
+    def test_no_secret_in_registry(self) -> None:
+        """No credential-like strings should appear in registry names or provider repr."""
+        container = DependencyContainer()
+        register_llm_components(container)
+        router = container.resolve(LLMRouter)
+        registry = container.resolve(ProviderRegistry)
+        factory = container.resolve(ProviderFactory)
+        settings = LLMSettings(
+            api_mode="real",
+            providers=(LLMProviderConfig(name="openai", api_key="sk-supersecret123"),),
+        )
+        register_default_llm_providers(registry, factory, settings, router=router)
+        for name in registry.names():
+            assert "sk-" not in name
+            assert "supersecret" not in name
+            assert "supersecret" not in repr(registry.get(name)).lower()
+
+    def test_create_app_router_has_health_infrastructure(self) -> None:
+        """create_app() returns an app whose router has all health infrastructure wired."""
+        app = create_app()
+        router = app.state.llm_router
+        assert router._health is not None
+        assert router._circuit_breakers is not None
+        assert router._fallback is not None
+        assert "mock" in router.get_available_providers()
+        assert router._health.is_healthy("mock")
