@@ -16,6 +16,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.llm.base import ChatRequest
+from app.llm.models import ChatResponse, Message, Role, ResponseFormat, StreamChunk
 from app.llm.bootstrap import (
     register_default_llm_providers,
     register_llm_components,
@@ -325,3 +327,59 @@ class TestCreateAppIntegration:
         router = container.resolve(LLMRouter)
         available = router.get_available_providers()
         assert "mock" in available
+
+    def test_mock_provider_generates_valid_chat_response(self) -> None:
+        """MockProvider.generate() must return a ChatResponse with all required fields."""
+        provider = MockProvider()
+        request = ChatRequest(messages=(Message(role=Role.USER, content="Hello"),), model="mock-1")
+        response = provider.generate(request)
+        assert isinstance(response, ChatResponse)
+        assert response.content is not None
+        assert response.model is not None
+        assert response.provider == "mock"
+        assert response.usage is not None
+        assert response.usage.prompt_tokens > 0
+        assert response.usage.completion_tokens > 0
+        assert response.usage.total_tokens > 0
+
+    def test_mock_provider_generate_no_secret_leakage(self) -> None:
+        """MockProvider response must not contain credential-like values."""
+        provider = MockProvider()
+        request = ChatRequest(messages=(Message(role=Role.USER, content="Hello world"),), model="mock-1")
+        response = provider.generate(request)
+        assert "sk-" not in response.content
+        assert "api_key" not in response.content.lower()
+        assert "token" not in response.content.lower() or response.content.strip() == ""
+
+    def test_mock_provider_stream_yields_chunks(self) -> None:
+        """MockProvider.stream() must yield StreamChunk objects."""
+        provider = MockProvider()
+        request = ChatRequest(messages=(Message(role=Role.USER, content="Hello world"),), model="mock-1")
+        chunks = list(provider.stream(request))
+        assert len(chunks) > 0
+        for chunk in chunks:
+            assert isinstance(chunk, StreamChunk)
+            assert chunk.provider == "mock"
+
+    def test_mock_provider_with_echo_input_preserves_content(self) -> None:
+        """MockProvider with echo_input=True must echo the user message."""
+        provider = MockProvider(echo_input=True)
+        request = ChatRequest(messages=(Message(role=Role.USER, content="Test message"),), model="mock-1")
+        response = provider.generate(request)
+        assert "Echo: Test message" in response.content
+
+    def test_mock_provider_json_mode_preserves_format(self) -> None:
+        """MockProvider with json_mode must produce valid JSON structure."""
+        provider = MockProvider(json_mode_enabled=True)
+        request = ChatRequest(
+            messages=(Message(role=Role.USER, content="Hello"),),
+            model="mock-1",
+            response_format=ResponseFormat(type="json"),
+        )
+        response = provider.generate(request)
+        assert response.content is not None
+        import json
+        parsed = json.loads(response.content)
+        assert "model" in parsed
+        assert "prompt" in parsed
+        assert "reply" in parsed
