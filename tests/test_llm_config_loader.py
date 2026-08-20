@@ -16,7 +16,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.llm.bootstrap import register_default_llm_providers
+from app.llm.bootstrap import (
+    register_default_llm_providers,
+    register_llm_components,
+)
 from app.llm.config import (
     LLMProviderConfig,
     LLMSettings,
@@ -272,3 +275,53 @@ class TestCreateAppIntegration:
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json()["status"] == "ok"
+
+    def test_unknown_provider_name_skipped(
+        self, registry: ProviderRegistry, factory: ProviderFactory
+    ) -> None:
+        """Unknown provider names in real mode should be silently skipped.
+
+        The register_default_llm_providers helper must never register a provider
+        whose name does not match a known factory builder, even if it is
+        explicitly configured.
+        """
+        settings = LLMSettings(
+            api_mode="real",
+            providers=(
+                LLMProviderConfig(name="nonexistent_provider", api_key="sk-test"),
+            ),
+        )
+        register_default_llm_providers(registry, factory, settings)
+        assert registry.count == 0
+
+    def test_empty_credentials_handled_safely(self, clear_llm_env: None) -> None:
+        """Environment variables with only whitespace should be treated as absent.
+
+        The _env() helper must return None for blank values so that providers
+        with empty credentials are never registered in real mode.
+        """
+        os.environ["GENERAL_AI_API_MODE"] = "real"
+        os.environ["GENERAL_AI_OPENAI_API_KEY"] = "   "
+        os.environ["GENERAL_AI_OPENAI_MODEL"] = ""
+        settings = build_llm_settings_from_env()
+        assert settings.api_mode == "real"
+        assert settings.providers == ()
+
+    def test_llm_router_can_discover_mock_provider(self) -> None:
+        """LLMRouter must be able to discover a mock provider registered in mock mode."""
+        from app.llm.llm_router import LLMRouter
+        from app.llm.registry import ProviderRegistry
+        from app.llm.factory import ProviderFactory
+        from app.core.container import DependencyContainer
+
+        container = DependencyContainer()
+        register_llm_components(container)
+        registry = container.resolve(ProviderRegistry)
+        register_default_llm_providers(
+            registry,
+            container.resolve(ProviderFactory),
+            LLMSettings(api_mode="mock"),
+        )
+        router = container.resolve(LLMRouter)
+        available = router.get_available_providers()
+        assert "mock" in available

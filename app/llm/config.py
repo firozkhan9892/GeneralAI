@@ -152,7 +152,14 @@ def is_provider_configured(config: LLMProviderConfig) -> bool:
 
     OpenAI, OpenRouter, and Gemini need an API key.  Ollama is a local
     server and is only registered when a base URL or model is configured.
+
+    Unknown provider names are always considered unconfigured so that
+    ``register_default_llm_providers`` never attempts to build a builder
+    that does not exist.
     """
+    known_providers = {name for name, _ in _REAL_PROVIDERS}
+    if config.name not in known_providers:
+        return False
     requires_api_key = dict(_REAL_PROVIDERS).get(config.name, True)
     if requires_api_key and not config.api_key:
         return False
