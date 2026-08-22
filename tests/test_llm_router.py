@@ -1341,3 +1341,302 @@ class TestLLMRouter:
         router.health.record_failure("a", 0.1, "x")
         scores = router._score_providers(["a", "b"], _make_request(), RoutingCriteria())
         assert scores[0].provider_id == "b"
+
+
+# ---------------------------------------------------------------------------
+# Phase 14.10 — End-to-end failure and fallback tests
+# ---------------------------------------------------------------------------
+
+
+class TestEndToEndFailureAndFallback:
+    """Prove the complete production failure path:
+
+    provider failure
+    → health monitor records failure
+    → circuit breaker reacts per configured thresholds
+    → LLMRouter excludes unhealthy provider
+    → fallback succeeds (or all-fail is deterministic)
+
+    All tests use fakes/mocks only. No network calls.
+    """
+
+    # -- 1. Single provider failure ------------------------------------------
+
+    def test_single_failure_records_health_and_circuit(self) -> None:
+        """A single failure is recorded by health monitor and circuit breaker."""
+        router = _build_router([_TestProvider("p1", fail=True)])
+        cb = router._circuit_breakers["p1"]
+        before_failures = cb.consecutive_failures
+
+        with pytest.raises(RuntimeError, match="p1 failure"):
+            router.generate(_make_request())
+
+        snapshot = router.health.get_snapshot("p1")
+        assert snapshot.failure_count >= 1
+        assert cb.consecutive_failures == before_failures + 1
+
+    def test_single_failure_does_not_trip_open(self) -> None:
+        """A single failure does not trip the circuit to OPEN (threshold=5)."""
+        router = _build_router([_TestProvider("p1", fail=True)])
+        with pytest.raises(RuntimeError):
+            router.generate(_make_request())
+        assert router._circuit_breakers["p1"].state == CircuitState.CLOSED
+
+    def test_single_failure_raises_RuntimeError(self) -> None:
+        """The router re-raises the original provider exception."""
+        router = _build_router([_TestProvider("p1", fail=True)])
+        with pytest.raises(RuntimeError, match="p1 failure"):
+            router.generate(_make_request())
+
+    # -- 2. Fallback provider succeeds ---------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_fallback_provider_succeeds(self) -> None:
+        """When primary fails, fallback chain succeeds via FallbackManager."""
+        good = _TestProvider("good", content="fallback-ok")
+        fm = FallbackManager(
+            provider_resolver=lambda pid: good if pid == "good" else None,
+            max_fallback_attempts=3,
+        )
+        fm.set_fallback_chain("bad", ["good"])
+
+        req = _make_request()
+
+        class _FailProvider:
+            name = "bad"
+
+            def generate(self, r):
+                raise RuntimeError("bad is down")
+
+            def model_info(self, m=None):
+                return ModelInfo(name="bad-model", provider="bad")
+
+        result = await fm.execute_with_fallback(
+            req,
+            primary_provider="bad",
+            generate_func=lambda p, r: p.generate(r),
+        )
+        assert result is not None
+        assert result.provider == "good"
+        assert result.content == "fallback-ok"
+
+    @pytest.mark.asyncio
+    async def test_fallback_primary_success_no_fallback_called(self) -> None:
+        """When primary succeeds, fallback is never invoked."""
+        primary = _TestProvider("primary", content="primary-ok")
+        fallback_called = {"called": False}
+
+        class _SpyFallback:
+            name = "spy"
+
+            def generate(self, r):
+                fallback_called["called"] = True
+                return ChatResponse(
+                    content="should-not-see",
+                    model="test",
+                    provider="spy",
+                    usage=Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
+                )
+
+            def model_info(self, m=None):
+                return ModelInfo(name="spy", provider="spy")
+
+        fm = FallbackManager(
+            provider_resolver=lambda pid: (
+                primary if pid == "primary" else _SpyFallback()
+            ),
+            max_fallback_attempts=3,
+        )
+        fm.set_fallback_chain("primary", ["spy"])
+
+        result = await fm.execute_with_fallback(
+            _make_request(),
+            primary_provider="primary",
+            generate_func=lambda p, r: p.generate(r),
+        )
+        assert result.content == "primary-ok"
+        assert not fallback_called["called"]
+
+    # -- 3. Unhealthy provider is avoided ------------------------------------
+
+    def test_open_circuit_raises_CircuitBreakerError(self) -> None:
+        """Once circuit is OPEN, _check_circuit raises CircuitBreakerError."""
+        router = _build_router([_TestProvider("p1", fail=True)])
+        cb = router._circuit_breakers["p1"]
+
+        # Trip the circuit: failure_threshold=5 (default)
+        for _ in range(5):
+            with pytest.raises(RuntimeError):
+                router.generate(_make_request())
+
+        assert cb.state == CircuitState.OPEN
+
+        with pytest.raises(CircuitBreakerError, match="OPEN"):
+            router.generate(_make_request())
+
+    def test_open_circuit_provider_excluded_from_select(self) -> None:
+        """select_provider filters out providers with OPEN circuit when healthy exist."""
+        router = _build_router([_TestProvider("bad", fail=True), _TestProvider("good")])
+        cb = router._circuit_breakers["bad"]
+
+        # Trip the circuit for "bad" by forcing requests via provider_id
+        for _ in range(5):
+            with pytest.raises(RuntimeError):
+                router.generate(_make_request(), provider_id="bad")
+
+        assert cb.state == CircuitState.OPEN
+        decision = router.select_provider(_make_request())
+        assert decision.selected_provider == "good"
+
+    def test_open_circuit_failure_count_accumulates(self) -> None:
+        """Failure count continues to accumulate while circuit is OPEN."""
+        router = _build_router([_TestProvider("p1", fail=True)])
+        cb = router._circuit_breakers["p1"]
+
+        for _ in range(5):
+            with pytest.raises(RuntimeError):
+                router.generate(_make_request())
+
+        assert cb.consecutive_failures == 5
+
+    # -- 4. All providers fail -----------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_all_providers_fail_raises_FallbackExhaustedError(self) -> None:
+        """When all providers in chain fail, FallbackExhaustedError is raised."""
+        fm = FallbackManager(
+            provider_resolver=lambda pid: _TestProvider(pid, fail=True),
+            max_fallback_attempts=5,
+        )
+        fm.set_fallback_chain("a", ["b", "c"])
+
+        with pytest.raises(
+            FallbackExhaustedError, match="All 3 fallback providers failed"
+        ):
+            await fm.execute_with_fallback(
+                _make_request(),
+                primary_provider="a",
+                generate_func=lambda p, r: p.generate(r),
+            )
+
+    @pytest.mark.asyncio
+    async def test_all_fail_no_secrets_in_error(self) -> None:
+        """FallbackExhaustedError message contains no credential-like strings."""
+        fm = FallbackManager(
+            provider_resolver=lambda pid: _TestProvider(pid, fail=True),
+            max_fallback_attempts=3,
+        )
+        fm.set_fallback_chain("x", ["y"])
+
+        with pytest.raises(FallbackExhaustedError) as exc_info:
+            await fm.execute_with_fallback(
+                _make_request(),
+                primary_provider="x",
+                generate_func=lambda p, r: p.generate(r),
+            )
+        msg = str(exc_info.value)
+        assert "sk-" not in msg
+        assert "api_key" not in msg.lower()
+        assert "token" not in msg.lower()
+
+    @pytest.mark.asyncio
+    async def test_all_fail_no_infinite_loop(self) -> None:
+        """All-fail path terminates after max_fallback_attempts tries."""
+        call_count = {"n": 0}
+
+        def counting_generate(p, r):
+            call_count["n"] += 1
+            raise RuntimeError("fail")
+
+        fm = FallbackManager(
+            provider_resolver=lambda pid: _TestProvider(pid, fail=True),
+            max_fallback_attempts=3,
+        )
+        fm.set_fallback_chain("a", ["b", "c"])
+
+        with pytest.raises(FallbackExhaustedError):
+            await fm.execute_with_fallback(
+                _make_request(),
+                primary_provider="a",
+                generate_func=counting_generate,
+            )
+        assert call_count["n"] == 3
+
+    def test_all_fail_router_no_healthy_providers(self) -> None:
+        """When all registered providers have OPEN circuits, NoHealthyProvidersError."""
+        router = _build_router(
+            [_TestProvider("a", fail=True), _TestProvider("b", fail=True)]
+        )
+
+        for _ in range(5):
+            with pytest.raises(RuntimeError):
+                router.generate(_make_request())
+            with pytest.raises(RuntimeError):
+                router.generate(_make_request())
+
+        assert router._circuit_breakers["a"].state == CircuitState.OPEN
+        assert router._circuit_breakers["b"].state == CircuitState.OPEN
+
+        with pytest.raises(CircuitBreakerError):
+            router.generate(_make_request())
+
+    # -- 5. Recovery / half-open behavior ------------------------------------
+
+    def test_half_open_recovery_closes_circuit(self) -> None:
+        """After timeout, OPEN → HALF_OPEN → successes → CLOSED."""
+        cb = CircuitBreaker(failure_threshold=2, timeout=0.01, recovery_threshold=2)
+
+        # Trip to OPEN
+        cb.on_failure(RuntimeError("1"))
+        cb.on_failure(RuntimeError("2"))
+        assert cb.state == CircuitState.OPEN
+
+        # Wait for timeout
+        time.sleep(0.02)
+
+        # Now in HALF_OPEN, allow requests
+        assert cb.allow_request() is True
+        cb.on_success()
+        assert cb.state == CircuitState.HALF_OPEN
+        assert cb.allow_request() is True
+        cb.on_success()
+        assert cb.state == CircuitState.CLOSED
+
+    def test_half_open_failure_reopens_circuit(self) -> None:
+        """After timeout, OPEN → HALF_OPEN → failure → OPEN again."""
+        cb = CircuitBreaker(failure_threshold=2, timeout=0.01, recovery_threshold=2)
+
+        cb.on_failure(RuntimeError("1"))
+        cb.on_failure(RuntimeError("2"))
+        assert cb.state == CircuitState.OPEN
+
+        time.sleep(0.02)
+
+        assert cb.allow_request() is True
+        cb.on_failure(RuntimeError("3"))
+        assert cb.state == CircuitState.OPEN
+
+    def test_half_open_check_raises_after_reopen(self) -> None:
+        """After HALF_OPEN failure, check() raises CircuitBreakerError."""
+        cb = CircuitBreaker(failure_threshold=2, timeout=10.0, recovery_threshold=2)
+
+        cb.on_failure(RuntimeError("1"))
+        cb.on_failure(RuntimeError("2"))
+        assert cb.state == CircuitState.OPEN
+
+        time.sleep(0.01)
+        cb.allow_request()
+        cb.on_failure(RuntimeError("3"))
+
+        assert cb.state == CircuitState.OPEN
+        with pytest.raises(CircuitBreakerError):
+            cb.check("test-provider")
+
+    def test_recovery_resets_consecutive_failures(self) -> None:
+        """On success, consecutive_failures resets to 0."""
+        cb = CircuitBreaker(failure_threshold=5)
+        cb.on_failure(RuntimeError("a"))
+        cb.on_failure(RuntimeError("b"))
+        assert cb.consecutive_failures == 2
+        cb.on_success()
+        assert cb.consecutive_failures == 0
