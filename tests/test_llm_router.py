@@ -1426,8 +1426,12 @@ class TestEndToEndFailureAndFallback:
         primary = _TestProvider("primary", content="primary-ok")
         fallback_called = {"called": False}
 
-        class _SpyFallback:
+        class _SpyFallback(BaseLLMProvider):
             name = "spy"
+
+            @property
+            def default_model(self) -> str:
+                return "spy-model"
 
             def generate(self, r):
                 fallback_called["called"] = True
@@ -1437,6 +1441,9 @@ class TestEndToEndFailureAndFallback:
                     provider="spy",
                     usage=Usage(prompt_tokens=1, completion_tokens=1, total_tokens=2),
                 )
+
+            def stream(self, r):
+                yield  # pragma: no cover
 
             def model_info(self, m=None):
                 return ModelInfo(name="spy", provider="spy")
