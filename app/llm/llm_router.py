@@ -25,6 +25,8 @@ from app.llm.prompt_cache import PromptCache
 from app.llm.registry import ProviderRegistry
 from app.llm.request_queue import RequestPriority, RequestQueue
 from app.llm.router_exceptions import (
+    CircuitBreakerError,
+    FallbackExhaustedError,
     NoHealthyProvidersError,
     RoutingError,
 )
@@ -543,6 +545,10 @@ class LLMRouter:
     ) -> ChatResponse:
         """Generate a complete response, routing through the best provider.
 
+        When *provider_id* is given explicitly, only that provider is
+        tried (no fallback).  Otherwise the router selects via
+        :meth:`select_provider` and walks the fallback chain on failure.
+
         Args:
             request: The chat request.
             criteria: Optional routing criteria.
@@ -568,13 +574,27 @@ class LLMRouter:
             return self._execute_with_tracking(provider_id, provider, request, criteria)
 
         decision = self.select_provider(request, criteria)
-        selected = decision.selected_provider
+        chain = decision.fallback_chain
 
-        return self._execute_with_tracking(
-            selected,
-            self._require_provider(selected),
-            request,
-            criteria,
+        last_error: Exception | None = None
+        for pid in chain:
+            provider = self._resolve_provider(pid)
+            if provider is None:
+                continue
+            try:
+                return self._execute_with_tracking(pid, provider, request, criteria)
+            except CircuitBreakerError as exc:
+                last_error = exc
+                continue
+            except Exception as exc:
+                last_error = exc
+                continue
+
+        raise FallbackExhaustedError(
+            f"All {len(chain)} providers in fallback chain failed",
+            module="llm.llm_router",
+            context={"chain": chain},
+            cause=last_error,
         )
 
     def _execute_with_tracking(
@@ -695,6 +715,8 @@ class LLMRouter:
         """Generate a complete response asynchronously.
 
         Queues the request and applies concurrency/rate-limit controls.
+        Falls back through the provider chain on failure, matching
+        the synchronous :meth:`generate` semantics.
         """
         criteria = criteria or self.criteria_from_request(request)
 
@@ -709,9 +731,28 @@ class LLMRouter:
             return await self._execute_async(provider_id, provider, request, criteria)
 
         decision = self.select_provider(request, criteria)
-        selected = decision.selected_provider
-        provider = self._require_provider(selected)
-        return await self._execute_async(selected, provider, request, criteria)
+        chain = decision.fallback_chain
+
+        last_error: Exception | None = None
+        for pid in chain:
+            provider = self._resolve_provider(pid)
+            if provider is None:
+                continue
+            try:
+                return await self._execute_async(pid, provider, request, criteria)
+            except CircuitBreakerError as exc:
+                last_error = exc
+                continue
+            except Exception as exc:
+                last_error = exc
+                continue
+
+        raise FallbackExhaustedError(
+            f"All {len(chain)} providers in fallback chain failed",
+            module="llm.llm_router",
+            context={"chain": chain},
+            cause=last_error,
+        )
 
     async def _execute_async(
         self,
