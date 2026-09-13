@@ -90,19 +90,66 @@ class TestMyService:
 
 ### Quality Gates
 
+The exact commands CI runs (see [Continuous Integration](#continuous-integration)):
+
 ```bash
 # Run all tests
-python -m pytest tests/ -q
+python -m pytest -q
 
 # Check types
-python -m mypy app/ --ignore-missing-imports
+python -m mypy . --no-error-summary
 
 # Lint
-python -m ruff check app/ tests/
+python -m ruff check .
 
 # Format check
-python -m ruff format --check app/ tests/
+python -m ruff format --check .
 ```
+
+## Continuous Integration
+
+GeneralAI uses GitHub Actions (`.github/workflows/ci.yml`) to run all quality
+gates automatically on every push to `main` and every pull request targeting
+`main`.
+
+### What CI Runs
+
+The pipeline has three isolated jobs:
+
+| Job | Purpose |
+|---|---|
+| `test` | Installs the package in editable mode with dev extras, then runs `pytest`, `mypy`, `ruff check`, and `ruff format --check` |
+| `package` | Builds the sdist and wheel with `python -m build`, verifies artifact names and metadata (name `generalai`, version `1.0.0`, `numpy` runtime dep), installs the wheel into a clean environment, and verifies `import app` and `create_app()` work |
+| `optional-imports` | Installs only the base package (no optional extras), asserts `faiss`, `chromadb`, `pypdf`, `bs4`, and `sentence_transformers` are absent, and verifies the app still imports and `create_app()` starts |
+
+All jobs run on a clean `ubuntu-latest` runner with Python 3.10 (the declared
+minimum), use pip dependency caching, and run from a directory outside the
+repository checkout so the local `app/` package cannot shadow the installed one.
+
+### Reproducing CI Locally
+
+```bash
+# 1. Install the package (editable) with dev extras
+pip install -e '.[dev]'
+
+# 2. Quality gates
+python -m pytest -q
+python -m mypy . --no-error-summary
+python -m ruff check .
+python -m ruff format --check .
+
+# 3. Packaging verification
+python -m build
+
+# 4. Optional-dependency isolation (base install only)
+python -m venv /tmp/generalai-base
+/tmp/generalai-base/bin/pip install .
+cd /tmp
+/tmp/generalai-base/bin/python -c "import app; print(app.__version__)"
+/tmp/generalai-base/bin/python -c "from app.server.app import create_app; create_app()"
+```
+
+If any step fails locally, it will fail in CI too, so fix it before pushing.
 
 ## Key Entry Points
 

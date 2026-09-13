@@ -4,15 +4,14 @@
 
 - Python 3.10 or higher
 - pip package manager
-- (Optional) Docker for containerized deployment
 
 ## Standard Installation
 
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/your-org/generalai.git
-cd generalai
+git clone https://github.com/firozkhan9892/GeneralAI.git
+cd GeneralAI
 ```
 
 ### 2. Create Virtual Environment
@@ -36,7 +35,7 @@ pip install -r requirements.txt
 ### 4. Verify Installation
 
 ```bash
-python -c "import app; print('GeneralAI installed successfully')"
+python -c "import app; print('GeneralAI', app.__version__, 'installed successfully')"
 python -m pytest tests/ -q --tb=no
 ```
 
@@ -64,31 +63,36 @@ pip install sentence-transformers
 pip install numpy
 ```
 
-## Docker Installation
+Or install them all at once with the package extras:
 
 ```bash
-# Build image
-docker build -t generalai:latest .
-
-# Run container
-docker run -p 8000:8000 \
-  -e GENERAL_AI_API_KEY=your-secret-key \
-  -v generalai-data:/app/data \
-  -v generalai-logs:/app/logs \
-  generalai:latest
+pip install -e '.[all]'
 ```
+
+## Run the Server
+
+```bash
+# Development server (auto-reload, permissive defaults)
+uvicorn app.server.app:create_app --factory --reload --port 8000
+
+# Health check
+curl http://localhost:8000/health
+```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for production authentication, Docker,
+and process-manager guidance.
 
 ## Development Installation
 
 ```bash
-# Install with development tools
-pip install -r requirements.txt
-pip install pytest pytest-asyncio pytest-cov mypy ruff
+# Install the package (editable) with development tools
+pip install -e '.[dev]'
 
-# Run quality gates
-python -m pytest tests/ -q
-python -m ruff check app/ tests/
-python -m ruff format --check app/ tests/
+# Run quality gates (identical to CI)
+python -m pytest -q
+python -m mypy . --no-error-summary
+python -m ruff check .
+python -m ruff format --check .
 ```
 
 ## Troubleshooting
@@ -99,5 +103,5 @@ python -m ruff format --check app/ tests/
 |---|---|
 | `ModuleNotFoundError: No module named 'app'` | Run from project root directory |
 | `Permission denied` on data/logs directories | Create directories: `mkdir -p data logs` |
-| Port 8000 already in use | Change port: `--port 8080` |
+| Port 8000 already in use | Change port: `uvicorn ... --port 8080` |
 | Import errors with optional deps | Install optional dependencies as needed |

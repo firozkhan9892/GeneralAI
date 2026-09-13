@@ -77,7 +77,7 @@ class TestServerStartupShutdown:
     def test_app_title_and_version(self):
         app = _make_app()
         assert "GeneralAI" in app.title
-        assert app.version == "0.1.0"
+        assert app.version == "1.0.0"
 
 
 # ===========================================================================

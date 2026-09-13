@@ -12,7 +12,7 @@ Key components:
 - app.llm — Language model integrations (OpenAI, Ollama, etc.)
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"
 __app_name__ = "GeneralAI"
 
 __all__ = ["__version__", "__app_name__"]

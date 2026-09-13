@@ -47,9 +47,9 @@ setup.
 3. Build the sdist and wheel with `python -m build`.
 4. Verify the artifacts and metadata:
    - exactly one `.whl` and one `.tar.gz` are produced,
-   - wheel `METADATA` declares `Name: generalai`, `Version: 0.1.0`, and a
+   - wheel `METADATA` declares `Name: generalai`, `Version: 1.0.0`, and a
      `numpy` runtime dependency,
-   - the sdist contains `generalai-0.1.0/app/__init__.py`.
+   - the sdist contains `generalai-1.0.0/app/__init__.py`.
 5. Install the generated wheel into a clean virtual environment.
 6. From a directory **outside** the checkout (`/tmp`) confirm the installed
    package imports correctly:

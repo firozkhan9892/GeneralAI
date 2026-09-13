@@ -29,9 +29,10 @@ GeneralAI/
 │   ├── knowledge/      # RAG pipeline and retrieval
 │   ├── config/         # Settings and defaults
 │   └── utils/          # Logging and helpers
-├── tests/              # 2,497 tests across all modules
+├── tests/              # 2,589 tests across all modules
 ├── docs/               # Architecture and API documentation
 ├── main.py             # CLI entry point
+├── CHANGELOG.md        # Release history
 └── requirements.txt    # Python dependencies
 ```
 
@@ -68,6 +69,7 @@ curl http://localhost:8000/health
 | [CI.md](docs/CI.md) | Continuous integration & quality gates |
 | [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) | Troubleshooting guide |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deployment guide |
+| [CHANGELOG.md](CHANGELOG.md) | Release history |
 
 ## Configuration
 
@@ -104,6 +106,9 @@ See [CONFIGURATION.md](docs/CONFIGURATION.md) for the full reference.
 | Phase 14 | ✅ Complete | Production readiness audit |
 | Phase 14.1 | ✅ Complete | Production polish & documentation |
 | Phase 14.4 | ✅ Complete | GitHub Actions CI/CD & automated quality gates |
+| Phase 14.10 | ✅ Complete | LLM failure and fallback path verification |
+| Phase 14.11 | ✅ Complete | Fallback chain wired into LLMRouter |
+| Phase 14.13 | ✅ Complete | v1.0 release hardening |
 
 ## License
 

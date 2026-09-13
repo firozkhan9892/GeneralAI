@@ -50,13 +50,19 @@ curl http://localhost:8000/metrics
 
 ### API Key Authentication
 
-Set the API key via environment variable:
+The server API key is configured **in code** via `ServerSettings` — it is
+not set through an environment variable. Create a small module (e.g.
+`serve.py`) that wraps `create_app`:
 
-```bash
-export GENERAL_AI_API_KEY="your-secret-key"
+```python
+# serve.py
+from app.server.app import create_app
+from app.server.config import ServerSettings
+
+app = create_app(settings=ServerSettings(api_key="your-secret-key"))
 ```
 
-Then include it in requests:
+Run it with `uvicorn serve:app`. Then include the key in requests:
 
 ```bash
 curl -H "X-API-Key: your-secret-key" http://localhost:8000/agent/run \

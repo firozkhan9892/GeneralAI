@@ -408,6 +408,7 @@ class TestAgentManagerExecute:
         await mgr.execute(AgentRequest(raw_input="What is up?", session_id="dup"))
         with pytest.raises(SessionAlreadyExistsError):
             await mgr.execute(AgentRequest(raw_input="Hi again", session_id="dup"))
+        await mgr.shutdown()
 
     @pytest.mark.asyncio
     async def test_execute_config_session_id_filled(self) -> None:
@@ -444,6 +445,7 @@ class TestAgentManagerExecute:
         assert isinstance(session, AgentSession)
         with pytest.raises(SessionNotFoundError):
             mgr.get_status("missing")
+        await mgr.shutdown()
 
     @pytest.mark.asyncio
     async def test_list_sessions_filter(self) -> None:
@@ -453,6 +455,7 @@ class TestAgentManagerExecute:
         await mgr.execute(AgentRequest(raw_input="What is up?", session_id="run"))
         done_sessions = mgr.list_sessions(status=SessionStatus.COMPLETED)
         assert [s.session_id for s in done_sessions] == ["done"]
+        await mgr.shutdown()
 
     @pytest.mark.asyncio
     async def test_await_completion_timeout_keeps_run_alive(self) -> None:

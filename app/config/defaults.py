@@ -11,7 +11,7 @@ from typing import Final
 # Application metadata
 # ------------------------------------------------------------------
 APP_NAME: Final[str] = "GeneralAI"
-APP_VERSION: Final[str] = "0.1.0"
+APP_VERSION: Final[str] = "1.0.0"
 APP_DESCRIPTION: Final[str] = "Autonomous AI Platform"
 
 # ------------------------------------------------------------------

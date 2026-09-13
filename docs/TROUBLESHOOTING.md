@@ -71,7 +71,7 @@ python main.py --debug --log-level DEBUG
 curl http://localhost:8000/health
 
 # Expected response:
-# {"status": "healthy", "version": "0.1.0", ...}
+# {"status": "healthy", "version": "1.0.0", ...}
 ```
 
 ## Getting Help

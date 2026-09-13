@@ -16,7 +16,7 @@ class TestAppSettings:
         """Settings should load with sensible defaults."""
         settings = AppSettings()
         assert settings.app_name == "GeneralAI"
-        assert settings.app_version == "0.1.0"
+        assert settings.app_version == "1.0.0"
         assert settings.log_level == "INFO"
         assert settings.environment == "development"
         assert settings.debug is False

@@ -86,12 +86,12 @@ jobs:
               meta_name = [n for n in zf.namelist() if n.endswith("METADATA")][0]
               meta = zf.read(meta_name).decode()
           assert "Name: generalai" in meta, "package name mismatch"
-          assert "Version: 0.1.0" in meta, "package version mismatch"
+          assert "Version: 1.0.0" in meta, "package version mismatch"
           assert "Requires-Dist: numpy" in meta, "missing numpy runtime dependency"
 
           with tarfile.open(sdist) as tf:
               names = tf.getnames()
-          assert "generalai-0.1.0/app/__init__.py" in names, "sdist missing app package"
+          assert "generalai-1.0.0/app/__init__.py" in names, "sdist missing app package"
 
           print(f"artifacts OK: {wheel.name}, {sdist.name}")
           EOF

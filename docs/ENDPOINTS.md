@@ -20,7 +20,7 @@ Returns server health status.
 ```json
 {
   "status": "healthy",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "uptime_seconds": 1234.5,
   "modules": {
     "kernel": "ready",

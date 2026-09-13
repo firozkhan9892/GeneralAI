@@ -342,5 +342,40 @@ class TestOpenAPI:
         assert "text/html" in response.headers["content-type"]
 
 
+class TestPydanticSchemaWarnings:
+    """Regression: production schemas must not emit UnsupportedFieldAttributeWarning."""
+
+    def test_workflow_run_schema_no_alias_warning(self) -> None:
+        """WorkflowRun schema construction emits no pydantic alias-related warning."""
+        import warnings
+
+        import pydantic.warnings as pw
+
+        from app.automation.models import WorkflowRun, WorkflowSnapshot
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "error", category=pw.UnsupportedFieldAttributeWarning
+            )
+            WorkflowRun(
+                run_id="r1",
+                workflow_id="wf",
+                workflow_version="1.0.0",
+                snapshot=WorkflowSnapshot(workflow_id="wf", version="1.0.0"),
+            )
+
+    def test_create_app_no_pydantic_alias_warning(self) -> None:
+        """App startup/schema generation emits no pydantic alias-related warning."""
+        import warnings
+
+        import pydantic.warnings as pw
+
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "error", category=pw.UnsupportedFieldAttributeWarning
+            )
+            create_app()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
