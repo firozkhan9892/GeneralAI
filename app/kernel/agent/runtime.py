@@ -19,6 +19,8 @@ import time
 from typing import Any
 
 from app.kernel.agent.loop import AgentLoop
+from app.kernel.agent.llm_adapter import LLMCognitiveAdapter
+from app.llm.llm_router import LLMRouter
 from app.kernel.agent.models import (
     AgentRequest,
     AgentResponse,
@@ -76,6 +78,7 @@ class AgentRuntime:
         response: ResponseBuilder instance.
         tool_registry: Phase-5 ToolRegistry.
         tool_executor: Phase-5 ToolExecutor.
+        llm_router: Optional injected LLMRouter used only for final synthesis.
         loop: Optional AgentLoop (built from engines if omitted).
         retry_policy: Retry policy used by the loop.
         fallback_policy: Fallback policy used by the loop.
@@ -98,6 +101,7 @@ class AgentRuntime:
         response: ResponseBuilder | None = None,
         tool_registry: ToolRegistry | None = None,
         tool_executor: ToolExecutor | None = None,
+        llm_router: LLMRouter | None = None,
         loop: AgentLoop | None = None,
         retry_policy: RetryPolicy | None = None,
         fallback_policy: FallbackPolicy | None = None,
@@ -116,6 +120,9 @@ class AgentRuntime:
         self._response = response or ResponseBuilder()
         self._retry_policy = retry_policy or RetryPolicy()
         self._fallback_policy = fallback_policy or FallbackPolicy()
+
+        self._llm_router = llm_router
+        self._llm_adapter = LLMCognitiveAdapter(llm_router) if llm_router else None
 
         self._registry = tool_registry if tool_registry is not None else ToolRegistry()
         self._executor = (
@@ -286,6 +293,19 @@ class AgentRuntime:
                 "experience": experience,
             }
         )
+
+        # 11. LLM Cognitive Synthesis (Phase 15 Foundation)
+        if self._llm_adapter is not None:
+            context_dict = {
+                "session_id": session_id,
+                "intent": intent.primary.value if intent and intent.primary else None,
+                "user_input": percept.normalized_content or request.raw_input,
+            }
+            new_content = await self._llm_adapter.generate_response(
+                context=context_dict,
+                structured_output=output.content,
+            )
+            output = output.model_copy(update={"content": new_content})
 
         succeeded = (
             all(s.status == AgentStepStatus.SUCCEEDED for s in steps)

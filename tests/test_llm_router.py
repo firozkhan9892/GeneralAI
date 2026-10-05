@@ -583,6 +583,23 @@ class TestRequestQueue:
 
         asyncio.run(_run())
 
+    def test_cancelled_worker_is_restarted(self) -> None:
+        async def _run() -> None:
+            queue = RequestQueue()
+
+            async def _call() -> str:
+                return "done"
+
+            assert await queue.submit("p1", _call()) == "done"
+            worker = queue._workers["p1"]
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+            assert worker.done()
+            assert await queue.submit("p1", _call(), timeout=1.0) == "done"
+            await queue.shutdown()
+
+        asyncio.run(_run())
+
     def test_rate_limit_exceeded(self) -> None:
         async def _run() -> None:
             queue = RequestQueue()

@@ -23,6 +23,7 @@ from app.kernel.policy.engine import PolicyEngine
 from app.kernel.reasoning.engine import ReasoningEngine
 from app.kernel.reflection.engine import ReflectionEngine
 from app.kernel.response.builder import ResponseBuilder
+from app.llm.llm_router import LLMRouter
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
 
@@ -107,6 +108,7 @@ def _make_agent_runtime(container: DependencyContainer):
     """Return a factory building an AgentRuntime from the container."""
 
     def _factory() -> AgentRuntime:
+        llm_router = container.resolve(LLMRouter) if container.has(LLMRouter) else None
         return AgentRuntime(
             perception=container.resolve(PerceptionEngine),
             intent=container.resolve(IntentEngine),
@@ -121,6 +123,7 @@ def _make_agent_runtime(container: DependencyContainer):
             response=container.resolve(ResponseBuilder),
             tool_registry=container.resolve(ToolRegistry),
             tool_executor=container.resolve(ToolExecutor),
+            llm_router=llm_router,
             loop=container.resolve(AgentLoop),
             retry_policy=container.resolve(RetryPolicy),
             fallback_policy=container.resolve(FallbackPolicy),

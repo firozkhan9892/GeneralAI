@@ -196,7 +196,7 @@ class RequestQueue:
         self._provider_semaphores: dict[str, asyncio.Semaphore] = {}
 
     async def _ensure_provider_slot(self, provider_id: str) -> None:
-        """Ensure queues and semaphores exist for a provider."""
+        """Ensure queues, semaphores, and a live worker exist for a provider."""
         async with self._lock:
             if provider_id not in self._queues:
                 self._queues[provider_id] = asyncio.PriorityQueue()
@@ -206,6 +206,10 @@ class RequestQueue:
                 self._semaphores[provider_id] = asyncio.Semaphore(self.max_concurrency)
                 if provider_id not in self._rate_limiters:
                     self._rate_limiters[provider_id] = ProviderRateLimiter()
+            worker = self._workers.get(provider_id)
+            if worker is None or worker.done():
+                # A host may cancel idle background tasks between requests.
+                # Restart the consumer without discarding queued work.
                 self._workers[provider_id] = asyncio.create_task(
                     self._worker(provider_id)
                 )
